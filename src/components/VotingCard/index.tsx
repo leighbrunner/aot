@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Image, Pressable } from 'react-native';
+import { View, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { Card, Text, useTheme, IconButton, Surface } from 'react-native-paper';
 import Animated, {
   useSharedValue,
@@ -15,6 +15,7 @@ import {
   Gesture,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
+import { LazyImage } from '../LazyImage';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CARD_WIDTH = screenWidth * 0.9;
@@ -142,22 +143,19 @@ export const VotingCard: React.FC<VotingCardProps> = ({
         <Animated.View style={[styles.cardContainer, animatedStyle]}>
           <Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: thumbnailUrl || imageUrl }}
-                style={styles.image}
-                resizeMode="cover"
-                onLoad={() => {
+              <LazyImage
+                source={imageUrl}
+                placeholder={thumbnailUrl}
+                size="medium"
+                priority="high"
+                imageStyle={styles.image}
+                onLoadEnd={() => {
                   setImageLoaded(true);
                   onImageLoad?.();
                 }}
+                showLoadingIndicator={true}
+                fadeInDuration={300}
               />
-              {imageLoaded && thumbnailUrl && (
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={StyleSheet.absoluteFillObject}
-                  resizeMode="cover"
-                />
-              )}
             </View>
             
             <Card.Content style={styles.content}>

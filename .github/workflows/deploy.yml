@@ -1,65 +1,202 @@
-name: Deploy
+name: Deploy to AWS
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'test'
-        type: choice
-        options:
-        - test
-        - production
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_PROFILE: leigh
+  NODE_VERSION: 18
+  AWS_REGION: us-east-1
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linting
+        run: npm run lint
+      
+      - name: Run tests
+        run: npm test -- --coverage --watchAll=false
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  deploy-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Amplify CLI
+        run: npm install -g @aws-amplify/cli@latest
+      
+      - name: Set environment
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "AMPLIFY_ENV=prod" >> $GITHUB_ENV
+          else
+            echo "AMPLIFY_ENV=test" >> $GITHUB_ENV
+          fi
+      
+      - name: Deploy Amplify Backend
+        run: |
+          amplify init --yes --envName ${{ env.AMPLIFY_ENV }} --profile ${{ env.AWS_PROFILE }}
+          amplify push --yes --allow-destructive-schema-changes
+      
+      - name: Deploy WAF Rules
+        run: |
+          cd infrastructure
+          npm ci
+          npx cdk deploy VotingApp-WAF-${{ env.AMPLIFY_ENV }} --require-approval never --profile ${{ env.AWS_PROFILE }}
+      
+      - name: Deploy Monitoring Stack
+        run: |
+          cd infrastructure
+          npx cdk deploy VotingApp-Monitoring-${{ env.AMPLIFY_ENV }} --require-approval never --profile ${{ env.AWS_PROFILE }}
+
+  deploy-admin-dashboard:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20.x'
-        cache: 'npm'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Set environment
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
+            echo "DOMAIN=admin.assortits.com" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
+            echo "DOMAIN=admin-test.assortits.com" >> $GITHUB_ENV
+          fi
+      
+      - name: Build admin dashboard
+        run: |
+          cd admin
+          npm ci
+          npm run build
+        env:
+          NEXT_PUBLIC_API_ENDPOINT: ${{ env.DEPLOY_ENV == 'prod' && secrets.PROD_API_ENDPOINT || secrets.TEST_API_ENDPOINT }}
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ env.DEPLOY_ENV == 'prod' && secrets.PROD_COGNITO_USER_POOL_ID || secrets.TEST_COGNITO_USER_POOL_ID }}
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ env.DEPLOY_ENV == 'prod' && secrets.PROD_COGNITO_CLIENT_ID || secrets.TEST_COGNITO_CLIENT_ID }}
+      
+      - name: Deploy to S3
+        run: |
+          aws s3 sync admin/out s3://${{ env.DOMAIN }} --delete --profile ${{ env.AWS_PROFILE }}
+      
+      - name: Invalidate CloudFront
+        run: |
+          DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${{ env.DOMAIN }}'].Id" --output text --profile ${{ env.AWS_PROFILE }})
+          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" --profile ${{ env.AWS_PROFILE }}
+
+  deploy-mobile-app:
+    needs: [deploy-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Configure environment
+        run: |
+          echo "API_ENDPOINT=${{ secrets.PROD_API_ENDPOINT }}" > .env.production
+          echo "COGNITO_USER_POOL_ID=${{ secrets.PROD_COGNITO_USER_POOL_ID }}" >> .env.production
+          echo "COGNITO_CLIENT_ID=${{ secrets.PROD_COGNITO_CLIENT_ID }}" >> .env.production
+          echo "S3_BUCKET=${{ secrets.PROD_S3_BUCKET }}" >> .env.production
+          echo "CLOUDFRONT_URL=${{ secrets.PROD_CLOUDFRONT_URL }}" >> .env.production
+      
+      - name: Build and submit to stores
+        run: |
+          eas build --platform all --non-interactive --auto-submit
+      
+      - name: Update OTA
+        run: |
+          expo publish --release-channel production
+
+  notify:
+    needs: [deploy-backend, deploy-admin-dashboard, deploy-mobile-app]
+    runs-on: ubuntu-latest
+    if: always()
     
-    - name: Install dependencies
-      run: npm ci --legacy-peer-deps
-    
-    - name: Install Amplify CLI
-      run: npm install -g @aws-amplify/cli
-    
-    - name: Deploy to Test
-      if: github.event.inputs.environment == 'test' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      run: |
-        export AWS_PROFILE=leigh
-        echo "Deploying to test environment"
-        # Amplify deployment commands will be added in Phase 2
-    
-    - name: Deploy to Production
-      if: github.event.inputs.environment == 'production'
-      run: |
-        export AWS_PROFILE=leigh
-        echo "Deploying to production environment"
-        # Amplify deployment commands will be added in Phase 2
-    
-    - name: Notify deployment status
-      if: always()
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const status = '${{ job.status }}';
-          const environment = '${{ github.event.inputs.environment }}' || 'test';
-          const message = `Deployment to ${environment} ${status}`;
-          console.log(message);
+    steps:
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Deployment Status: ${{ job.status }}
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

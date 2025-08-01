@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Surface, Text, useTheme, Snackbar, Button } from 'react-native-paper';
 import { VotingCard } from '@/components/VotingCard';
 import { votingService, ImagePair, VoteSubmission } from '@/services/api/votingService';
@@ -7,41 +7,80 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useVotingHistory } from '@/hooks/useVotingHistory';
 import { useRealtimeVotes } from '@/hooks/useRealtimeVotes';
 import { PreferenceCalculator } from '@/utils/preferences';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { LoadingState } from '@/components/LoadingState';
+import { SwipeIndicator } from '@/components/SwipeIndicator';
+import { AnimatedCounter } from '@/components/AnimatedCounter';
+import { useImagePreloader } from '@/hooks/useImagePreloader';
 
 export const VotingScreen: React.FC = () => {
   const theme = useTheme();
   const { isAuthenticated, isAnonymous, signInAnonymously } = useAuth();
   const { addVote, getVoteStats } = useVotingHistory();
+  const { handleError, handleAsyncError } = useErrorHandler('VotingScreen');
   
   const [currentPair, setCurrentPair] = useState<ImagePair | null>(null);
+  const [nextPairs, setNextPairs] = useState<ImagePair[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [votingInProgress, setVotingInProgress] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [showSwipeIndicator, setShowSwipeIndicator] = useState(true);
 
   // Real-time vote tracking
   const imageIds = currentPair?.images.map(img => img.imageId) || [];
   const { voteUpdates, isConnected } = useRealtimeVotes(imageIds);
 
-  const loadImagePair = useCallback(async () => {
+  // Preload next images
+  const nextImageUrls = nextPairs.flatMap(pair => 
+    pair.images.map(img => img.url)
+  );
+  useImagePreloader(nextImageUrls, { preloadCount: 6 });
+
+  const loadImagePair = useCallback(async (usePreloaded = false) => {
     try {
-      setLoading(true);
-      setError(null);
-      const pair = await votingService.getImagePair();
-      setCurrentPair(pair);
-    } catch (err) {
-      setError('Failed to load images. Please try again.');
-      console.error('Error loading image pair:', err);
+      if (usePreloaded && nextPairs.length > 0) {
+        // Use preloaded pair
+        const [nextPair, ...remainingPairs] = nextPairs;
+        setCurrentPair(nextPair);
+        setNextPairs(remainingPairs);
+        
+        // Preload more pairs in background
+        if (remainingPairs.length < 2) {
+          votingService.getImagePair().then(newPair => {
+            setNextPairs(prev => [...prev, newPair]);
+          }).catch(handleError);
+        }
+      } else {
+        // Load fresh pair
+        setLoading(true);
+        setError(null);
+        const pair = await votingService.getImagePair();
+        setCurrentPair(pair);
+        
+        // Preload next pairs
+        Promise.all([
+          votingService.getImagePair(),
+          votingService.getImagePair(),
+        ]).then(pairs => {
+          setNextPairs(pairs);
+        }).catch(handleError);
+      }
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to load images. Please try again.';
+      setError(errorMessage);
+      handleError(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handleError, nextPairs]);
 
   const handleVote = useCallback(async (direction: 'left' | 'right') => {
     if (!currentPair || votingInProgress) return;
 
     setVotingInProgress(true);
+    setShowSwipeIndicator(false);
     
     const winnerIndex = direction === 'left' ? 0 : 1;
     const loserIndex = direction === 'left' ? 1 : 0;
@@ -74,11 +113,12 @@ export const VotingScreen: React.FC = () => {
         setSnackbarVisible(true);
       }
       
-      // Load next pair
-      await loadImagePair();
-    } catch (err) {
-      setError('Failed to submit vote. Please try again.');
-      console.error('Error submitting vote:', err);
+      // Load next pair (use preloaded if available)
+      await loadImagePair(true);
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to submit vote. Please try again.';
+      setError(errorMessage);
+      handleError(err);
     } finally {
       setVotingInProgress(false);
     }
@@ -113,10 +153,10 @@ export const VotingScreen: React.FC = () => {
   if (loading && !currentPair) {
     return (
       <Surface style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text variant="bodyLarge" style={styles.loadingText}>
-          Loading images...
-        </Text>
+        <LoadingState 
+          message="Finding the perfect match..."
+          fullScreen
+        />
       </Surface>
     );
   }
@@ -158,15 +198,20 @@ export const VotingScreen: React.FC = () => {
               />
               {isConnected && voteUpdates.has(image.imageId) && (
                 <View style={styles.statsOverlay}>
-                  <Text variant="labelSmall" style={styles.statsText}>
-                    {voteUpdates.get(image.imageId)?.voteCount || 0} votes
-                  </Text>
+                  <AnimatedCounter
+                    value={voteUpdates.get(image.imageId)?.voteCount || 0}
+                    variant="labelSmall"
+                    style={styles.statsText}
+                    suffix=" votes"
+                  />
                 </View>
               )}
             </View>
           ))}
         </View>
       )}
+      
+      <SwipeIndicator visible={showSwipeIndicator && currentPair !== null} />
       
       <Snackbar
         visible={snackbarVisible}

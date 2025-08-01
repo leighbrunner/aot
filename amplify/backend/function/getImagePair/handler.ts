@@ -59,21 +59,31 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       )
     );
     
+    // Create weighted array based on promotion weights
+    const weightedImages: any[] = [];
+    images.forEach(image => {
+      const weight = image.promotionWeight || 1;
+      for (let i = 0; i < weight; i++) {
+        weightedImages.push(image);
+      }
+    });
+    
     // Find a pair the user hasn't voted on
     let image1, image2;
     let attempts = 0;
     const maxAttempts = 50;
     
     do {
-      const idx1 = Math.floor(Math.random() * images.length);
-      let idx2 = Math.floor(Math.random() * images.length);
+      const idx1 = Math.floor(Math.random() * weightedImages.length);
+      let idx2 = Math.floor(Math.random() * weightedImages.length);
       
-      while (idx2 === idx1) {
-        idx2 = Math.floor(Math.random() * images.length);
+      // Ensure we get different images (not just different indices)
+      while (weightedImages[idx2].imageId === weightedImages[idx1].imageId) {
+        idx2 = Math.floor(Math.random() * weightedImages.length);
       }
       
-      image1 = images[idx1];
-      image2 = images[idx2];
+      image1 = weightedImages[idx1];
+      image2 = weightedImages[idx2];
       
       const pairKey = [image1.imageId, image2.imageId].sort().join('-');
       
@@ -83,12 +93,6 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       
       attempts++;
     } while (attempts < maxAttempts);
-    
-    // Apply promotion weights
-    if (Math.random() < image1.promotionWeight / 10) {
-      // Swap to give promoted image better position
-      [image1, image2] = [image2, image1];
-    }
     
     return {
       statusCode: 200,

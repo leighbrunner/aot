@@ -1,6 +1,7 @@
 import { generateClient } from 'aws-amplify/data';
 import { Schema } from '@/amplify/data/resource';
 import { authService } from '@/services/auth/authService';
+import { offlineManager } from '@/services/offline/offlineManager';
 
 const client = generateClient<Schema>();
 
@@ -49,11 +50,20 @@ class VotingService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch image pair');
+        if (response.status === 404) {
+          throw new Error('No more images available in this category');
+        }
+        if (response.status === 401) {
+          throw new Error('Authentication required');
+        }
+        throw new Error(`Failed to fetch image pair: ${response.status}`);
       }
 
       const pair = await response.json();
       this.currentSessionId = pair.sessionId;
+
+      // Cache images for offline use
+      offlineManager.cacheImages(pair.images);
 
       // Preload next pair
       this.preloadNextPair(category);
@@ -86,6 +96,17 @@ class VotingService {
       const pairKey = [vote.winnerId, vote.loserId].sort().join('-');
       this.votedPairs.add(pairKey);
 
+      // Check if online
+      if (!offlineManager.getOnlineStatus()) {
+        // Save vote offline
+        await offlineManager.saveVoteOffline(vote);
+        return {
+          success: true,
+          voteId: `offline_${Date.now()}`,
+          message: 'Vote saved offline. Will sync when online.',
+        };
+      }
+
       const response = await fetch(`${process.env.API_ENDPOINT}/vote`, {
         method: 'POST',
         headers: {
@@ -96,7 +117,16 @@ class VotingService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit vote');
+        if (response.status === 409) {
+          throw new Error('You have already voted on this pair');
+        }
+        if (response.status === 401) {
+          throw new Error('Authentication required');
+        }
+        if (response.status === 429) {
+          throw new Error('Too many votes. Please slow down');
+        }
+        throw new Error(`Failed to submit vote: ${response.status}`);
       }
 
       const result = await response.json();
@@ -105,7 +135,17 @@ class VotingService {
       await this.updateUserStats();
 
       return result;
-    } catch (error) {
+    } catch (error: any) {
+      // If network error, save offline
+      if (error.message?.includes('Network') || error.message?.includes('fetch')) {
+        await offlineManager.saveVoteOffline(vote);
+        return {
+          success: true,
+          voteId: `offline_${Date.now()}`,
+          message: 'Vote saved offline. Will sync when online.',
+        };
+      }
+      
       console.error('Error submitting vote:', error);
       throw error;
     }

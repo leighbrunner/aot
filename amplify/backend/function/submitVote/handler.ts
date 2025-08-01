@@ -1,11 +1,14 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { APIGatewayProxyHandler } from 'aws-lambda';
+import { publishMetric } from '../../monitoring/cloudwatch';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 export const handler: APIGatewayProxyHandler = async (event) => {
+  const startTime = Date.now();
+  
   try {
     const body = JSON.parse(event.body || '{}');
     const { winnerId, loserId, category, sessionId } = body;
@@ -68,6 +71,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       },
     }));
     
+    // Publish metrics
+    const duration = Date.now() - startTime;
+    await publishMetric('VotingApp', 'VotesPerMinute', 1, 'Count', { Category: category });
+    await publishMetric('VotingApp', 'VoteLatency', duration, 'Milliseconds');
+    
     return {
       statusCode: 200,
       headers: {
@@ -82,6 +90,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     };
   } catch (error) {
     console.error('Error submitting vote:', error);
+    
+    // Publish error metric
+    await publishMetric('VotingApp', 'VoteErrors', 1, 'Count');
+    
     return {
       statusCode: 500,
       headers: {
