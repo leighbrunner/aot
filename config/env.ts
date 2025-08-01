@@ -4,6 +4,8 @@ export interface EnvConfig {
   AWS_REGION: string;
   COGNITO_USER_POOL_ID: string;
   COGNITO_CLIENT_ID: string;
+  COGNITO_IDENTITY_POOL_ID: string;
+  COGNITO_DOMAIN: string;
   S3_BUCKET: string;
   CLOUDFRONT_URL: string;
   ENABLE_SOCIAL_LOGIN: boolean;
@@ -32,6 +34,8 @@ export const getConfig = (): EnvConfig => ({
   AWS_REGION: getEnvVar('AWS_REGION', 'us-east-1'),
   COGNITO_USER_POOL_ID: getEnvVar('COGNITO_USER_POOL_ID', ''),
   COGNITO_CLIENT_ID: getEnvVar('COGNITO_CLIENT_ID', ''),
+  COGNITO_IDENTITY_POOL_ID: getEnvVar('COGNITO_IDENTITY_POOL_ID', ''),
+  COGNITO_DOMAIN: getEnvVar('COGNITO_DOMAIN', ''),
   S3_BUCKET: getEnvVar('S3_BUCKET', ''),
   CLOUDFRONT_URL: getEnvVar('CLOUDFRONT_URL', ''),
   ENABLE_SOCIAL_LOGIN: getBooleanEnvVar('ENABLE_SOCIAL_LOGIN', false),
