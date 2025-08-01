@@ -1,0 +1,65 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+        - test
+        - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Install dependencies
+      run: npm ci --legacy-peer-deps
+    
+    - name: Install Amplify CLI
+      run: npm install -g @aws-amplify/cli
+    
+    - name: Deploy to Test
+      if: github.event.inputs.environment == 'test' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: |
+        export AWS_PROFILE=leigh
+        echo "Deploying to test environment"
+        # Amplify deployment commands will be added in Phase 2
+    
+    - name: Deploy to Production
+      if: github.event.inputs.environment == 'production'
+      run: |
+        export AWS_PROFILE=leigh
+        echo "Deploying to production environment"
+        # Amplify deployment commands will be added in Phase 2
+    
+    - name: Notify deployment status
+      if: always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const status = '${{ job.status }}';
+          const environment = '${{ github.event.inputs.environment }}' || 'test';
+          const message = `Deployment to ${environment} ${status}`;
+          console.log(message);

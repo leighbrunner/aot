@@ -1,0 +1,12 @@
+# Amplify ignore file
+node_modules/
+.expo/
+.vscode/
+.idea/
+*.log
+.DS_Store
+dist/
+build/
+coverage/
+.env*
+!.env.example

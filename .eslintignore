@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+build/
+coverage/
+*.config.js
+babel.config.js
+metro.config.js
+jest.config.js
+amplify/backend/
+infrastructure/
