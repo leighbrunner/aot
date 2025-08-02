@@ -4,6 +4,7 @@ import { data } from './data/resource';
 import { storage } from './storage/resource';
 import { getImagePair } from './functions/getImagePair/resource';
 import { submitVote } from './functions/submitVote/resource';
+import { getLeaderboard } from './functions/getLeaderboard/resource';
 import { Stack } from 'aws-cdk-lib';
 import { RestApi, LambdaIntegration, Cors } from 'aws-cdk-lib/aws-apigateway';
 import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
@@ -19,6 +20,7 @@ const backend = defineBackend({
   storage,
   getImagePair,
   submitVote,
+  getLeaderboard,
 });
 
 // Get the underlying CDK stack
@@ -28,6 +30,7 @@ const dataStack = Stack.of(backend.data);
 const imagesTableName = backend.data.resources.tables['Image'].tableName;
 const votesTableName = backend.data.resources.tables['Vote'].tableName;
 const usersTableName = backend.data.resources.tables['User'].tableName;
+const analyticsTableName = backend.data.resources.tables['Analytics'].tableName;
 
 // Update Lambda environment variables
 backend.getImagePair.resources.lambda.addEnvironment('IMAGES_TABLE_NAME', imagesTableName);
@@ -36,6 +39,10 @@ backend.getImagePair.resources.lambda.addEnvironment('VOTES_TABLE_NAME', votesTa
 backend.submitVote.resources.lambda.addEnvironment('VOTES_TABLE_NAME', votesTableName);
 backend.submitVote.resources.lambda.addEnvironment('IMAGES_TABLE_NAME', imagesTableName);
 backend.submitVote.resources.lambda.addEnvironment('USERS_TABLE_NAME', usersTableName);
+backend.submitVote.resources.lambda.addEnvironment('ANALYTICS_TABLE_NAME', analyticsTableName);
+
+backend.getLeaderboard.resources.lambda.addEnvironment('IMAGES_TABLE_NAME', imagesTableName);
+backend.getLeaderboard.resources.lambda.addEnvironment('ANALYTICS_TABLE_NAME', analyticsTableName);
 
 // Grant permissions to Lambda functions
 backend.data.resources.tables['Image'].grantReadData(backend.getImagePair.resources.lambda);
@@ -44,6 +51,10 @@ backend.data.resources.tables['Vote'].grantReadData(backend.getImagePair.resourc
 backend.data.resources.tables['Vote'].grantWriteData(backend.submitVote.resources.lambda);
 backend.data.resources.tables['Image'].grantReadWriteData(backend.submitVote.resources.lambda);
 backend.data.resources.tables['User'].grantReadWriteData(backend.submitVote.resources.lambda);
+backend.data.resources.tables['Analytics'].grantReadWriteData(backend.submitVote.resources.lambda);
+
+backend.data.resources.tables['Image'].grantReadData(backend.getLeaderboard.resources.lambda);
+backend.data.resources.tables['Analytics'].grantReadData(backend.getLeaderboard.resources.lambda);
 
 // Create REST API
 const api = new RestApi(dataStack, 'VotingAPI', {
@@ -59,14 +70,17 @@ const api = new RestApi(dataStack, 'VotingAPI', {
 const imagesResource = api.root.addResource('images');
 const pairResource = imagesResource.addResource('pair');
 const voteResource = api.root.addResource('vote');
+const leaderboardResource = api.root.addResource('leaderboard');
 
 // Add Lambda integrations
 const getImagePairIntegration = new LambdaIntegration(backend.getImagePair.resources.lambda);
 const submitVoteIntegration = new LambdaIntegration(backend.submitVote.resources.lambda);
+const getLeaderboardIntegration = new LambdaIntegration(backend.getLeaderboard.resources.lambda);
 
 // Add methods
 pairResource.addMethod('GET', getImagePairIntegration);
 voteResource.addMethod('POST', submitVoteIntegration);
+leaderboardResource.addMethod('GET', getLeaderboardIntegration);
 
 // Add API Gateway permissions to Lambda functions
 backend.getImagePair.resources.lambda.addPermission('ApiGatewayInvoke', {

@@ -1,252 +1,272 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Image } from 'react-native';
-import { Surface, Text, useTheme, SegmentedButtons, Card, List, Avatar, Chip } from 'react-native-paper';
+import { 
+  View, 
+  StyleSheet, 
+  FlatList, 
+  Dimensions,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+import { 
+  Text, 
+  Surface, 
+  Chip, 
+  SegmentedButtons,
+  useTheme,
+  Divider,
+} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { leaderboardAPI, type LeaderboardItem, type Period } from '../../services/api/leaderboard';
+import LeaderboardItem from '../../components/LeaderboardItem';
 
-interface LeaderboardItem {
-  rank: number;
-  imageId: string;
-  image: {
-    url: string;
-    thumbnailUrl: string;
-    characterName: string;
-    categories: string[];
-  };
-  stats: {
-    voteCount: number;
-    winCount: number;
-    winRate: number;
-  };
-}
+const { width: screenWidth } = Dimensions.get('window');
 
-type Period = 'day' | 'week' | 'month' | 'year' | 'all';
-
-export const LeaderboardScreen: React.FC = () => {
+export default function LeaderboardScreen() {
   const theme = useTheme();
-  const [period, setPeriod] = useState<Period>('day');
-  const [category, setCategory] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>('all');
+  const [category, setCategory] = useState<string | undefined>();
   const [items, setItems] = useState<LeaderboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchLeaderboard = useCallback(async (isRefresh = false) => {
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextToken, setNextToken] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  
+  // Categories - in production, these would come from the API
+  const categories = ['all', 'ass', 'tits'];
+  
+  const periodButtons = [
+    { value: 'day', label: 'Today', icon: 'calendar-today' },
+    { value: 'week', label: 'Week', icon: 'calendar-week' },
+    { value: 'month', label: 'Month', icon: 'calendar-month' },
+    { value: 'year', label: 'Year', icon: 'calendar' },
+    { value: 'all', label: 'All Time', icon: 'trophy' },
+  ];
+  
+  // Fetch leaderboard data
+  const fetchLeaderboard = useCallback(async (
+    refresh = false,
+    loadMore = false
+  ) => {
+    if (!refresh && !loadMore) {
+      setLoading(true);
+    }
+    
     try {
-      if (!isRefresh) setLoading(true);
-      setError(null);
+      const result = await leaderboardAPI.getLeaderboard({
+        period,
+        category: category === 'all' ? undefined : category,
+        limit: 20,
+        nextToken: loadMore ? nextToken : undefined,
+      });
       
-      const response = await fetch(
-        `${process.env.API_ENDPOINT}/leaderboards/${period}${category ? `?category=${category}` : ''}`,
-        {
-          headers: {
-            'Authorization': 'Bearer ' + (await getAuthToken()),
-          },
-        }
-      );
+      if (loadMore) {
+        setItems(prev => [...prev, ...result.items]);
+      } else {
+        setItems(result.items);
+      }
       
-      if (!response.ok) throw new Error('Failed to fetch leaderboard');
-      
-      const data = await response.json();
-      setItems(data.items || []);
-    } catch (err) {
-      setError('Failed to load leaderboard');
-      console.error('Error fetching leaderboard:', err);
+      setNextToken(result.nextToken);
+      setHasMore(!!result.nextToken);
+    } catch (error) {
+      console.error('Failed to fetch leaderboard:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
-  }, [period, category]);
-
+  }, [period, category, nextToken]);
+  
+  // Initial load and refresh on filters change
   useEffect(() => {
     fetchLeaderboard();
-  }, [fetchLeaderboard]);
-
-  const onRefresh = useCallback(() => {
+  }, [period, category]);
+  
+  // Pull to refresh
+  const handleRefresh = () => {
     setRefreshing(true);
+    setNextToken(null);
     fetchLeaderboard(true);
-  }, [fetchLeaderboard]);
-
-  const renderLeaderboardItem = (item: LeaderboardItem) => {
-    const isTop3 = item.rank <= 3;
-    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
+  };
+  
+  // Load more on scroll
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore && nextToken) {
+      setLoadingMore(true);
+      fetchLeaderboard(false, true);
+    }
+  };
+  
+  // Render item
+  const renderItem = ({ item, index }: { item: LeaderboardItem; index: number }) => (
+    <LeaderboardItem
+      item={item}
+      rank={item.rank}
+      showRankChange={period !== 'all'}
+    />
+  );
+  
+  // Footer component
+  const renderFooter = () => {
+    if (!loadingMore) return null;
     
     return (
-      <Card key={item.imageId} style={styles.itemCard} mode="elevated">
-        <Card.Content style={styles.itemContent}>
-          <View style={styles.rankContainer}>
-            {isTop3 ? (
-              <MaterialCommunityIcons
-                name="medal"
-                size={32}
-                color={medalColors[item.rank - 1]}
-              />
-            ) : (
-              <Text variant="titleLarge" style={styles.rankText}>
-                #{item.rank}
-              </Text>
-            )}
-          </View>
-          
-          <Image
-            source={{ uri: item.image.thumbnailUrl || item.image.url }}
-            style={styles.thumbnail}
-          />
-          
-          <View style={styles.infoContainer}>
-            <Text variant="titleMedium" numberOfLines={1}>
-              {item.image.characterName}
-            </Text>
-            <View style={styles.categoriesRow}>
-              {item.image.categories.slice(0, 2).map((cat, index) => (
-                <Chip key={index} compact style={styles.categoryChip}>
-                  {cat}
-                </Chip>
-              ))}
-            </View>
-          </View>
-          
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text variant="labelSmall" style={styles.statLabel}>Win Rate</Text>
-              <Text variant="titleMedium" style={styles.statValue}>
-                {(item.stats.winRate * 100).toFixed(1)}%
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text variant="labelSmall" style={styles.statLabel}>Votes</Text>
-              <Text variant="titleMedium" style={styles.statValue}>
-                {item.stats.voteCount.toLocaleString()}
-              </Text>
-            </View>
-          </View>
-        </Card.Content>
-      </Card>
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={theme.colors.primary} />
+      </View>
     );
   };
-
-  if (loading && items.length === 0) {
+  
+  // Empty state
+  const renderEmpty = () => {
+    if (loading) return null;
+    
     return (
-      <Surface style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </Surface>
-    );
-  }
-
-  return (
-    <Surface style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={styles.filterContainer}>
-        <SegmentedButtons
-          value={period}
-          onValueChange={(value) => setPeriod(value as Period)}
-          buttons={[
-            { value: 'day', label: 'Today' },
-            { value: 'week', label: 'Week' },
-            { value: 'month', label: 'Month' },
-            { value: 'year', label: 'Year' },
-            { value: 'all', label: 'All Time' },
-          ]}
-          style={styles.segmentedButtons}
+      <View style={styles.emptyContainer}>
+        <MaterialCommunityIcons 
+          name="trophy-outline" 
+          size={64} 
+          color={theme.colors.onSurfaceVariant} 
         />
+        <Text variant="titleMedium" style={styles.emptyText}>
+          No images found
+        </Text>
+        <Text variant="bodyMedium" style={styles.emptySubtext}>
+          Be the first to vote in this category!
+        </Text>
+      </View>
+    );
+  };
+  
+  // Header component
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <Text variant="headlineMedium" style={styles.title}>
+        Leaderboard
+      </Text>
+      
+      {/* Period selector */}
+      <SegmentedButtons
+        value={period}
+        onValueChange={(value) => setPeriod(value as Period)}
+        buttons={periodButtons}
+        style={styles.periodSelector}
+        density="small"
+      />
+      
+      {/* Category filter */}
+      <View style={styles.categoryContainer}>
+        {categories.map((cat) => (
+          <Chip
+            key={cat}
+            selected={category === cat || (!category && cat === 'all')}
+            onPress={() => setCategory(cat === 'all' ? undefined : cat)}
+            style={styles.categoryChip}
+            mode="flat"
+          >
+            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+          </Chip>
+        ))}
       </View>
       
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {error ? (
-          <Text style={styles.errorText}>{error}</Text>
-        ) : items.length === 0 ? (
-          <Text style={styles.emptyText}>No data available for this period</Text>
-        ) : (
-          items.map(renderLeaderboardItem)
-        )}
-      </ScrollView>
-    </Surface>
+      <Divider style={styles.divider} />
+    </View>
   );
-};
-
-// Stub for auth token
-async function getAuthToken(): Promise<string> {
-  // This will be replaced with actual auth service
-  return '';
+  
+  if (loading && items.length === 0) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>Loading leaderboard...</Text>
+      </View>
+    );
+  }
+  
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.imageId}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f5f5f5',
   },
-  filterContainer: {
-    padding: 16,
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 16,
+  },
+  header: {
+    backgroundColor: 'white',
+    paddingTop: 16,
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
-  segmentedButtons: {
-    marginBottom: 8,
+  title: {
+    marginBottom: 16,
+    textAlign: 'center',
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  itemCard: {
+  periodSelector: {
     marginBottom: 12,
   },
-  itemContent: {
+  categoryContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-  },
-  rankContainer: {
-    width: 50,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  rankText: {
-    fontWeight: 'bold',
-  },
-  thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginHorizontal: 12,
-  },
-  infoContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  categoriesRow: {
-    flexDirection: 'row',
-    marginTop: 4,
-    gap: 4,
+    gap: 8,
+    marginBottom: 8,
   },
   categoryChip: {
-    height: 24,
+    marginHorizontal: 4,
   },
-  statsContainer: {
-    alignItems: 'flex-end',
+  divider: {
+    marginTop: 8,
   },
-  statItem: {
-    alignItems: 'flex-end',
-    marginBottom: 4,
+  listContent: {
+    flexGrow: 1,
   },
-  statLabel: {
-    opacity: 0.6,
+  footerLoader: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
-  statValue: {
-    fontWeight: 'bold',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: 'red',
-    padding: 20,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 64,
   },
   emptyText: {
+    marginTop: 16,
     textAlign: 'center',
-    opacity: 0.6,
-    padding: 20,
+  },
+  emptySubtext: {
+    marginTop: 8,
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });
