@@ -19,6 +19,7 @@ import { ProfileStackParamList } from '@/navigation/ProfileNavigator';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateClient } from 'aws-amplify/api';
 import { getUser } from '@/graphql/queries';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Schema } from '@/amplify/data/resource';
 
 const client = generateClient<Schema>();
@@ -28,7 +29,7 @@ type ProfileNavigationProp = StackNavigationProp<ProfileStackParamList, 'Profile
 export const ProfileScreen: React.FC = () => {
   const theme = useTheme();
   const navigation = useNavigation<ProfileNavigationProp>();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAnonymous } = useAuth();
   
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -152,6 +153,36 @@ export const ProfileScreen: React.FC = () => {
             </View>
           </Card.Content>
         </Card>
+
+        {/* Convert Account Card for Anonymous Users */}
+        {isAnonymous && (
+          <Card style={[styles.convertCard, { backgroundColor: theme.colors.primaryContainer }]}>
+            <Card.Content style={styles.convertContent}>
+              <MaterialCommunityIcons
+                name="account-convert"
+                size={40}
+                color={theme.colors.primary}
+                style={styles.convertIcon}
+              />
+              <View style={styles.convertTextContainer}>
+                <Text style={[styles.convertTitle, { color: theme.colors.onPrimaryContainer }]}>
+                  Secure Your Account
+                </Text>
+                <Text style={[styles.convertDescription, { color: theme.colors.onPrimaryContainer }]}>
+                  Convert to a full account to save your progress across devices
+                </Text>
+              </View>
+              <Button
+                mode="contained"
+                onPress={() => navigation.navigate('ConvertAccount')}
+                style={styles.convertButton}
+                contentStyle={styles.convertButtonContent}
+              >
+                Convert Account
+              </Button>
+            </Card.Content>
+          </Card>
+        )}
 
         {/* Actions */}
         <Card style={styles.actionsCard}>
@@ -302,6 +333,37 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   signOutButtonContent: {
+    paddingVertical: 8,
+  },
+  convertCard: {
+    marginBottom: 20,
+    elevation: 2,
+  },
+  convertContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  convertIcon: {
+    marginRight: 16,
+  },
+  convertTextContainer: {
+    flex: 1,
+  },
+  convertTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  convertDescription: {
+    fontSize: 14,
+    marginTop: 4,
+    opacity: 0.8,
+  },
+  convertButton: {
+    marginLeft: 16,
+  },
+  convertButtonContent: {
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
 });
