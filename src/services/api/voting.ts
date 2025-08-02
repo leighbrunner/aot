@@ -1,6 +1,8 @@
 import { generateClient } from 'aws-amplify/api';
 import { get, post } from 'aws-amplify/api';
 import type { Schema } from '../../../amplify/data/resource';
+import { voteQueue } from '../voting/voteQueue';
+import NetInfo from '@react-native-community/netinfo';
 
 const client = generateClient<Schema>();
 
@@ -19,8 +21,12 @@ export interface ImagePair {
 
 export interface VoteResult {
   success: boolean;
-  voteId: string;
-  message: string;
+  voteId?: string;
+  message?: string;
+  error?: string;
+  queued?: boolean;
+  currentStreak?: number;
+  longestStreak?: number;
 }
 
 export interface ImagePairResponse {
@@ -46,7 +52,7 @@ export const votingAPI = {
     }
   },
 
-  // Submit a vote
+  // Submit a vote with offline support
   async submitVote(
     winnerId: string,
     loserId: string,
@@ -54,6 +60,27 @@ export const votingAPI = {
     sessionId: string
   ): Promise<VoteResult> {
     try {
+      // Check network status
+      const netState = await NetInfo.fetch();
+      
+      if (!netState.isConnected) {
+        // Queue vote for later
+        const queueId = await voteQueue.addVote({
+          winnerId,
+          loserId,
+          category,
+          sessionId,
+        });
+        
+        return {
+          success: true,
+          queued: true,
+          message: 'Vote queued for submission when online',
+          voteId: queueId,
+        };
+      }
+      
+      // Try to submit vote
       const response = await post({
         apiName: 'votingAPI',
         path: '/vote',
@@ -67,10 +94,38 @@ export const votingAPI = {
         },
       }).response;
       
+      if (response.statusCode === 409) {
+        // Duplicate vote
+        const data = await response.body.json();
+        return {
+          success: false,
+          error: 'Duplicate vote detected',
+          message: data.message,
+        };
+      }
+      
       const data = await response.body.json();
       return data as VoteResult;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting vote:', error);
+      
+      // Queue vote on network error
+      if (error.name === 'NetworkError' || !navigator.onLine) {
+        const queueId = await voteQueue.addVote({
+          winnerId,
+          loserId,
+          category,
+          sessionId,
+        });
+        
+        return {
+          success: true,
+          queued: true,
+          message: 'Vote queued for submission when online',
+          voteId: queueId,
+        };
+      }
+      
       throw error;
     }
   },

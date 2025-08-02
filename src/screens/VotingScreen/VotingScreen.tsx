@@ -12,7 +12,17 @@ import * as Haptics from 'expo-haptics';
 
 export default function VotingScreen() {
   const { user } = useAuthContext();
-  const { addVote, incrementStreak, recentVotes } = useVotingStore();
+  const { 
+    addVote, 
+    addPendingVote, 
+    resolvePendingVote, 
+    removePendingVote,
+    updateStreak, 
+    updateDailyProgress,
+    recentVotes,
+    queueSize,
+    setQueueSize,
+  } = useVotingStore();
   const { preloadImages, queuePreload } = useImagePreloader();
   const { cacheImage } = useImageCache();
   const { shouldShow: shouldShowTutorial, resetTutorial } = useShouldShowTutorial();
@@ -88,6 +98,25 @@ export default function VotingScreen() {
     loserId: string, 
     direction: 'left' | 'right'
   ) => {
+    // Create temporary vote ID for optimistic update
+    const tempVoteId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const vote = {
+      id: tempVoteId,
+      winnerId,
+      loserId,
+      category: selectedCategory || 'all',
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Optimistic update
+    addPendingVote(vote);
+    updateDailyProgress();
+    
+    // Haptic feedback
+    if (direction === 'right') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    
     try {
       // Submit vote to API
       const result = await votingAPI.submitVote(
@@ -98,40 +127,64 @@ export default function VotingScreen() {
       );
 
       if (result.success) {
-        // Store last vote for undo
-        setLastVote({
-          winnerId,
-          loserId,
-          voteId: result.voteId,
-        });
-        
-        // Update local store
-        addVote({
-          id: result.voteId,
-          winnerId,
-          loserId,
-          category: selectedCategory || 'all',
-          timestamp: new Date().toISOString(),
-        });
-        incrementStreak();
-        
-        // Show undo option
-        setShowUndoSnackbar(true);
-        
-        // Haptic feedback
-        if (direction === 'right') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (result.queued) {
+          // Vote was queued for offline submission
+          setQueueSize(queueSize + 1);
+          setShowUndoSnackbar(true);
+        } else {
+          // Vote was submitted successfully
+          resolvePendingVote(tempVoteId, result.voteId!);
+          
+          // Store last vote for undo
+          setLastVote({
+            winnerId,
+            loserId,
+            voteId: result.voteId,
+          });
+          
+          // Update actual vote count and streak
+          addVote({
+            ...vote,
+            id: result.voteId!,
+          });
+          
+          // Update streak if returned from server
+          if (result.currentStreak !== undefined && result.longestStreak !== undefined) {
+            updateStreak(result.currentStreak, result.longestStreak);
+          }
+          
+          // Show undo option
+          setShowUndoSnackbar(true);
         }
         
         // Preload more if running low
         if (preloadedPairs.length < 3) {
           preloadNextBatch();
         }
+      } else {
+        // Handle errors (e.g., duplicate vote)
+        removePendingVote(tempVoteId, result.error);
+        Alert.alert('Notice', result.message || 'Vote not counted');
       }
     } catch (error) {
+      // Remove optimistic update on error
+      removePendingVote(tempVoteId, 'Failed to submit vote');
       Alert.alert('Error', 'Failed to submit vote. Please try again.');
     }
-  }, [selectedCategory, sessionId, addVote, incrementStreak, preloadedPairs.length, preloadNextBatch]);
+  }, [
+    selectedCategory, 
+    sessionId, 
+    addVote, 
+    addPendingVote,
+    resolvePendingVote,
+    removePendingVote,
+    updateStreak,
+    updateDailyProgress,
+    queueSize,
+    setQueueSize,
+    preloadedPairs.length, 
+    preloadNextBatch
+  ]);
 
   const handleUndo = useCallback(async () => {
     if (!lastVote) return;
