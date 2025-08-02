@@ -75,25 +75,14 @@ export const ProfileScreen: React.FC = () => {
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              console.error('Error signing out:', error);
-              Alert.alert('Error', 'Failed to sign out');
-            }
-          },
-        },
-      ]
-    );
+    if (window.confirm('Are you sure you want to sign out?')) {
+      try {
+        await signOut();
+      } catch (error) {
+        console.error('Error signing out:', error);
+        Alert.alert('Error', 'Failed to sign out');
+      }
+    }
   };
 
   const getPreferenceLabel = () => {
@@ -111,26 +100,32 @@ export const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.content}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.contentWrapper}>
         {/* Profile Header */}
         <Card style={styles.headerCard}>
           <Card.Content style={styles.headerContent}>
-            <Avatar.Icon
-              size={80}
-              icon="account"
-              style={{ backgroundColor: theme.colors.primary }}
-            />
-            <View style={styles.headerInfo}>
-              <Title>{profile?.username || 'Anonymous User'}</Title>
-              <Paragraph>{profile?.email || 'No email set'}</Paragraph>
-              <Text style={[styles.preferenceText, { color: theme.colors.primary }]}>
-                {getPreferenceLabel()}
-              </Text>
+            <View style={styles.profileSection}>
+              <Avatar.Icon
+                size={100}
+                icon="account"
+                style={{ backgroundColor: theme.colors.primary }}
+              />
+              <View style={styles.headerInfo}>
+                <Title style={styles.username}>{profile?.username || 'Anonymous User'}</Title>
+                <Paragraph style={styles.email}>{profile?.email || 'No email set'}</Paragraph>
+                <Text style={[styles.preferenceText, { color: theme.colors.primary }]}>
+                  {getPreferenceLabel()}
+                </Text>
+              </View>
             </View>
             <IconButton
               icon="pencil"
-              size={24}
+              size={28}
               onPress={() => navigation.navigate('EditProfile')}
               style={styles.editButton}
             />
@@ -140,7 +135,7 @@ export const ProfileScreen: React.FC = () => {
         {/* Statistics */}
         <Card style={styles.statsCard}>
           <Card.Content>
-            <Title>Your Statistics</Title>
+            <Title style={styles.sectionTitle}>Your Statistics</Title>
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{stats.totalVotes}</Text>
@@ -166,6 +161,9 @@ export const ProfileScreen: React.FC = () => {
               description="Update your username and preferences"
               left={props => <List.Icon {...props} icon="account-edit" />}
               onPress={() => navigation.navigate('EditProfile')}
+              style={styles.listItem}
+              titleStyle={styles.listTitle}
+              descriptionStyle={styles.listDescription}
             />
             <Divider />
             <List.Item
@@ -173,6 +171,9 @@ export const ProfileScreen: React.FC = () => {
               description="Manage your privacy preferences"
               left={props => <List.Icon {...props} icon="shield-account" />}
               onPress={() => Alert.alert('Coming Soon', 'Privacy settings will be available soon')}
+              style={styles.listItem}
+              titleStyle={styles.listTitle}
+              descriptionStyle={styles.listDescription}
             />
             <Divider />
             <List.Item
@@ -180,6 +181,9 @@ export const ProfileScreen: React.FC = () => {
               description="Learn more about the app"
               left={props => <List.Icon {...props} icon="information" />}
               onPress={() => Alert.alert('About', 'Voting App v1.0.0')}
+              style={styles.listItem}
+              titleStyle={styles.listTitle}
+              descriptionStyle={styles.listDescription}
             />
           </List.Section>
         </Card>
@@ -190,6 +194,7 @@ export const ProfileScreen: React.FC = () => {
           onPress={handleSignOut}
           style={styles.signOutButton}
           textColor={theme.colors.error}
+          contentStyle={styles.signOutButtonContent}
         >
           Sign Out
         </Button>
@@ -203,61 +208,100 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  contentWrapper: {
+    width: '100%',
+    maxWidth: 600,
+    paddingHorizontal: 16,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: {
-    padding: 16,
-    paddingBottom: 32,
-  },
   headerCard: {
-    marginBottom: 16,
+    marginBottom: 20,
+    elevation: 2,
   },
   headerContent: {
+    position: 'relative',
+  },
+  profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
   },
   headerInfo: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: 24,
+  },
+  username: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  email: {
+    fontSize: 16,
+    opacity: 0.7,
+    marginTop: 4,
   },
   preferenceText: {
-    marginTop: 4,
+    marginTop: 8,
     fontWeight: 'bold',
+    fontSize: 18,
   },
   editButton: {
     position: 'absolute',
     top: -8,
     right: -8,
   },
-  statsCard: {
+  sectionTitle: {
+    fontSize: 20,
     marginBottom: 16,
+  },
+  statsCard: {
+    marginBottom: 20,
+    elevation: 2,
   },
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 16,
+    marginTop: 8,
   },
   statItem: {
     alignItems: 'center',
+    padding: 16,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#6200ee',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 14,
     opacity: 0.7,
     marginTop: 4,
   },
   actionsCard: {
-    marginBottom: 24,
+    marginBottom: 32,
+    elevation: 2,
+  },
+  listItem: {
+    paddingVertical: 12,
+  },
+  listTitle: {
+    fontSize: 16,
+  },
+  listDescription: {
+    fontSize: 14,
   },
   signOutButton: {
     borderColor: '#f44336',
+    marginBottom: 24,
+  },
+  signOutButtonContent: {
+    paddingVertical: 8,
   },
 });

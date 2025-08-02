@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { VotingScreen } from '@/screens/VotingScreen';
 import { LeaderboardScreen } from '@/screens/LeaderboardScreen';
-import { ProfileScreen } from '@/screens/ProfileScreen';
+import { ProfileNavigator } from './ProfileNavigator';
 
 export type RootTabParamList = {
   Voting: undefined;
@@ -40,7 +40,7 @@ export const AppNavigator: React.FC = () => {
         />
         <Tab.Screen 
           name="Profile" 
-          component={ProfileScreen}
+          component={ProfileNavigator}
           options={{
             title: 'Profile',
             tabBarLabel: 'Profile',

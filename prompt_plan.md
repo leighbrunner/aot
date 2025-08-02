@@ -33,7 +33,7 @@
 - [x] Implement social login buttons (Google, Facebook, Apple)
 - [x] Add loading states and error handling
 - [x] Create platform-specific auth components (.web.tsx, .native.tsx)
-- [ ] Test auth flow on all platforms
+- [x] Test auth flow on all platforms
 
 ### 3.2 User Profile - Priority: HIGH
 - [ ] Implement getCurrentUser GraphQL query
