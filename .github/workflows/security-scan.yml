@@ -1,0 +1,241 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+
+jobs:
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run npm audit
+      run: |
+        npm audit --production
+        npm audit --json > npm-audit.json || true
+    
+    - name: Upload npm audit results
+      uses: actions/upload-artifact@v3
+      with:
+        name: npm-audit-results
+        path: npm-audit.json
+    
+    - name: Run Snyk scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high --json > snyk-results.json
+    
+    - name: Check for critical vulnerabilities
+      run: |
+        if npm audit --production | grep -E 'Critical|High'; then
+          echo "Critical vulnerabilities found!"
+          exit 1
+        fi
+
+  code-scan:
+    name: Code Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: javascript, typescript
+    
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+    
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/owasp-top-ten
+          p/react
+          p/typescript
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: docker build -t voting-app:scan .
+    
+    - name: Run Trivy scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'voting-app:scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  infrastructure-scan:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Checkov scan
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: amplify/
+        framework: cloudformation
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+    
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: checkov-results.sarif
+    
+    - name: Terrascan
+      run: |
+        docker run --rm -v "$(pwd):/src" \
+          tenable/terrascan scan \
+          -t aws -f amplify/ \
+          --output sarif > terrascan-results.sarif
+
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Detect secrets with Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: TruffleHog scan
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
+
+  api-security:
+    name: API Security Testing
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Start test environment
+      run: |
+        npm run start:test &
+        sleep 30
+    
+    - name: Run OWASP ZAP API scan
+      uses: zaproxy/action-api-scan@v0.4.0
+      with:
+        target: 'http://localhost:3000/api'
+        format: 'sarif'
+        rules_file_name: '.zap/rules.tsv'
+    
+    - name: Run API fuzzing
+      run: |
+        npm install -g @restfuzz/cli
+        restfuzz test --target http://localhost:3000/api --time 300
+
+  compliance-check:
+    name: Compliance Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: License compliance check
+      run: |
+        npm install -g license-checker
+        license-checker --production --onlyAllow 'MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;CC0-1.0' > licenses.txt
+    
+    - name: GDPR compliance check
+      run: |
+        # Check for personal data handling
+        grep -r "email\|phone\|address\|ssn\|birthdate" src/ || true
+    
+    - name: Security headers check
+      run: |
+        # Verify security headers in configuration
+        grep -E "X-Frame-Options|X-Content-Type-Options|Strict-Transport-Security" amplify/ || echo "Missing security headers"
+
+  report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-scan, container-scan, infrastructure-scan, secrets-scan]
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Generate security report
+      run: |
+        echo "# Security Scan Report" > security-report.md
+        echo "Date: $(date)" >> security-report.md
+        echo "Branch: ${{ github.ref }}" >> security-report.md
+        echo "" >> security-report.md
+        
+        # Add scan results summary
+        echo "## Scan Results" >> security-report.md
+        echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> security-report.md
+        echo "- Code Scan: ${{ needs.code-scan.result }}" >> security-report.md
+        echo "- Container Scan: ${{ needs.container-scan.result }}" >> security-report.md
+        echo "- Infrastructure Scan: ${{ needs.infrastructure-scan.result }}" >> security-report.md
+        echo "- Secrets Scan: ${{ needs.secrets-scan.result }}" >> security-report.md
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: security-report.md
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('security-report.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });

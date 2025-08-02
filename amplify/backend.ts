@@ -11,6 +11,13 @@ import { RestApi, LambdaIntegration, Cors } from 'aws-cdk-lib/aws-apigateway';
 import { PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { Distribution, OriginAccessIdentity, ViewerProtocolPolicy, CachePolicy, AllowedMethods } from 'aws-cdk-lib/aws-cloudfront';
 import { S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as backup from 'aws-cdk-lib/aws-backup';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 /**
  * @see https://docs.amplify.aws/react-native/build-a-backend/ to add more resources
@@ -160,3 +167,181 @@ dataStack.addOutputs({
   CloudFrontDistributionId: distribution.distributionId,
   ApiUrl: api.url,
 });
+
+// Environment configuration
+const environment = process.env.AWS_BRANCH || 'sandbox';
+const isProd = environment === 'main';
+const isStaging = environment === 'staging';
+
+// Production configuration
+if (isProd || isStaging) {
+  // Create SNS topic for alerts
+  const alertTopic = new sns.Topic(dataStack, 'AlertTopic', {
+    topicName: `voting-app-alerts-${environment}`,
+    displayName: 'Voting App Alerts',
+  });
+
+  // Add email subscription for production alerts
+  if (isProd) {
+    alertTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription('alerts@votingapp.com')
+    );
+  }
+
+  // Create CloudWatch alarms for Lambda functions
+  const lambdaFunctions = [
+    { name: 'submitVote', function: backend.submitVote.resources.lambda },
+    { name: 'getImagePair', function: backend.getImagePair.resources.lambda },
+    { name: 'getLeaderboard', function: backend.getLeaderboard.resources.lambda },
+    { name: 'getUserStats', function: backend.getUserStats.resources.lambda },
+  ];
+
+  lambdaFunctions.forEach(({ name, function: lambdaFn }) => {
+    // Error rate alarm
+    new cloudwatch.Alarm(dataStack, `${name}ErrorAlarm`, {
+      metric: lambdaFn.metricErrors(),
+      threshold: 10,
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: `High error rate for ${name} function`,
+    }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // Duration alarm
+    new cloudwatch.Alarm(dataStack, `${name}DurationAlarm`, {
+      metric: lambdaFn.metricDuration(),
+      threshold: 3000, // 3 seconds
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: `High duration for ${name} function`,
+    }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // Throttles alarm
+    new cloudwatch.Alarm(dataStack, `${name}ThrottleAlarm`, {
+      metric: lambdaFn.metricThrottles(),
+      threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: `Throttling detected for ${name} function`,
+    }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+  });
+
+  // Create DynamoDB alarms
+  const tables = Object.values(backend.data.resources.tables);
+  
+  tables.forEach((table) => {
+    // User errors alarm
+    new cloudwatch.Alarm(dataStack, `${table.tableName}UserErrorsAlarm`, {
+      metric: table.metricUserErrors(),
+      threshold: 10,
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: `High user errors for ${table.tableName}`,
+    }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // System errors alarm
+    new cloudwatch.Alarm(dataStack, `${table.tableName}SystemErrorsAlarm`, {
+      metric: table.metricSystemErrorsForOperations(),
+      threshold: 5,
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: `System errors for ${table.tableName}`,
+    }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+  });
+
+  // Create backup plan for DynamoDB tables
+  const backupPlan = new backup.BackupPlan(dataStack, 'BackupPlan', {
+    backupPlanName: `voting-app-backup-${environment}`,
+    backupPlanRules: [
+      new backup.BackupPlanRule({
+        ruleName: 'DailyBackup',
+        scheduleExpression: events.Schedule.cron({
+          hour: '3',
+          minute: '0',
+        }),
+        startWindow: backup.Duration.hours(1),
+        completionWindow: backup.Duration.hours(2),
+        deleteAfter: backup.Duration.days(isProd ? 30 : 7),
+      }),
+      ...(isProd ? [
+        new backup.BackupPlanRule({
+          ruleName: 'WeeklyBackup',
+          scheduleExpression: events.Schedule.cron({
+            weekDay: 'SUN',
+            hour: '3',
+            minute: '0',
+          }),
+          startWindow: backup.Duration.hours(1),
+          completionWindow: backup.Duration.hours(2),
+          deleteAfter: backup.Duration.days(90),
+        }),
+      ] : []),
+    ],
+  });
+
+  // Add tables to backup plan
+  tables.forEach((table) => {
+    backupPlan.addSelection('TableBackup', {
+      resources: [
+        backup.BackupResource.fromDynamoDbTable(table),
+      ],
+    });
+  });
+
+  // Create CloudWatch dashboard
+  const dashboard = new cloudwatch.Dashboard(dataStack, 'OperationalDashboard', {
+    dashboardName: `voting-app-${environment}`,
+  });
+
+  // Add Lambda metrics to dashboard
+  dashboard.addWidgets(
+    new cloudwatch.GraphWidget({
+      title: 'Lambda Function Errors',
+      left: lambdaFunctions.map(({ name, function: fn }) => 
+        fn.metricErrors({ label: name })
+      ),
+      width: 12,
+    }),
+    new cloudwatch.GraphWidget({
+      title: 'Lambda Function Duration',
+      left: lambdaFunctions.map(({ name, function: fn }) => 
+        fn.metricDuration({ label: name })
+      ),
+      width: 12,
+    })
+  );
+
+  // Add DynamoDB metrics to dashboard
+  dashboard.addWidgets(
+    new cloudwatch.GraphWidget({
+      title: 'DynamoDB User Errors',
+      left: tables.map((table) => 
+        table.metricUserErrors({ label: table.tableName })
+      ),
+      width: 12,
+    }),
+    new cloudwatch.GraphWidget({
+      title: 'DynamoDB Consumed Read Capacity',
+      left: tables.map((table) => 
+        table.metricConsumedReadCapacityUnits({ label: table.tableName })
+      ),
+      width: 12,
+    })
+  );
+
+  // Set up cost alerts
+  new cloudwatch.Alarm(dataStack, 'BillingAlarm', {
+    metric: new cloudwatch.Metric({
+      namespace: 'AWS/Billing',
+      metricName: 'EstimatedCharges',
+      dimensionsMap: {
+        Currency: 'USD',
+      },
+      statistic: 'Maximum',
+      period: cloudwatch.Duration.days(1),
+    }),
+    threshold: isProd ? 500 : 100, // $500 for prod, $100 for staging
+    evaluationPeriods: 1,
+    treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    alarmDescription: 'Billing alarm for unexpected charges',
+  }).addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+}
