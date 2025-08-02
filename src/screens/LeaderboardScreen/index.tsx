@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -6,6 +6,7 @@ import {
   Dimensions,
   RefreshControl,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { 
   Text, 
@@ -14,10 +15,14 @@ import {
   SegmentedButtons,
   useTheme,
   Divider,
+  Banner,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { leaderboardAPI, type LeaderboardItem, type Period } from '../../services/api/leaderboard';
 import LeaderboardItem from '../../components/LeaderboardItem';
+import { realtimeService } from '../../services/realtime/realtimeService';
+import LiveVoteCounter from '../../components/LiveVoteCounter';
+import ActiveUsersIndicator from '../../components/ActiveUsersIndicator';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -31,6 +36,9 @@ export default function LeaderboardScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [hasNewUpdates, setHasNewUpdates] = useState(false);
+  const updateAnimation = useRef(new Animated.Value(0)).current;
+  const lastUpdateTime = useRef(Date.now());
   
   // Categories - in production, these would come from the API
   const categories = ['all', 'ass', 'tits'];
@@ -81,6 +89,46 @@ export default function LeaderboardScreen() {
   useEffect(() => {
     fetchLeaderboard();
   }, [period, category]);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    const subscription = realtimeService.subscribeToStatsUpdates(
+      (update) => {
+        // Check if it's a top image update for current period
+        if (update.type === 'topImage' && update.value) {
+          const data = JSON.parse(update.value as string);
+          
+          // Only show update banner if it's been more than 30 seconds
+          const now = Date.now();
+          if (now - lastUpdateTime.current > 30000) {
+            setHasNewUpdates(true);
+            lastUpdateTime.current = now;
+            
+            // Animate the banner
+            Animated.sequence([
+              Animated.timing(updateAnimation, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+              Animated.delay(5000),
+              Animated.timing(updateAnimation, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }),
+            ]).start(() => {
+              setHasNewUpdates(false);
+            });
+          }
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
   
   // Pull to refresh
   const handleRefresh = () => {
@@ -145,6 +193,12 @@ export default function LeaderboardScreen() {
         Leaderboard
       </Text>
       
+      {/* Live stats */}
+      <View style={styles.liveStatsContainer}>
+        <LiveVoteCounter showAnimation={false} />
+        <ActiveUsersIndicator compact />
+      </View>
+      
       {/* Period selector */}
       <SegmentedButtons
         value={period}
@@ -184,6 +238,40 @@ export default function LeaderboardScreen() {
   
   return (
     <View style={styles.container}>
+      {/* Update banner */}
+      {hasNewUpdates && (
+        <Animated.View
+          style={[
+            styles.updateBanner,
+            {
+              opacity: updateAnimation,
+              transform: [
+                {
+                  translateY: updateAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-50, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Banner
+            visible={true}
+            actions={[
+              {
+                label: 'Refresh',
+                onPress: handleRefresh,
+              },
+            ]}
+            icon="refresh"
+            style={styles.banner}
+          >
+            New votes have changed the rankings!
+          </Banner>
+        </Animated.View>
+      )}
+      
       <FlatList
         data={items}
         renderItem={renderItem}
@@ -268,5 +356,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     opacity: 0.7,
+  },
+  liveStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    gap: 16,
+  },
+  updateBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
+  banner: {
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
   },
 });

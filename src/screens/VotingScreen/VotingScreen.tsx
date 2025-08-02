@@ -8,6 +8,8 @@ import { useImagePreloader } from '../../services/image/imagePreloader';
 import { useImageCache } from '../../services/image/imageCache';
 import VotingCardStack from '../../components/VotingCardStack';
 import VotingTutorial, { useShouldShowTutorial } from '../../components/VotingTutorial';
+import VotingActivityFeed from '../../components/VotingActivityFeed';
+import ActiveUsersIndicator from '../../components/ActiveUsersIndicator';
 import * as Haptics from 'expo-haptics';
 
 export default function VotingScreen() {
@@ -216,6 +218,12 @@ export default function VotingScreen() {
         <Text variant="headlineSmall" style={styles.title}>
           Choose Your Favorite
         </Text>
+        
+        {/* Active users indicator */}
+        <View style={styles.activeUsers}>
+          <ActiveUsersIndicator compact />
+        </View>
+        
         <View style={styles.categoryContainer}>
           {categories.map((category) => (
             <Chip
@@ -240,6 +248,15 @@ export default function VotingScreen() {
           category={selectedCategory}
           onVote={handleVote}
           preloadedPairs={preloadedPairs}
+        />
+      </View>
+
+      {/* Live activity feed */}
+      <View style={styles.activityFeed}>
+        <VotingActivityFeed 
+          category={selectedCategory} 
+          compact
+          maxItems={5}
         />
       </View>
 
@@ -306,5 +323,14 @@ const styles = StyleSheet.create({
     margin: 16,
     right: 0,
     bottom: 0,
+  },
+  activeUsers: {
+    marginBottom: 8,
+  },
+  activityFeed: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
   },
 });

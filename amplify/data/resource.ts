@@ -131,6 +131,43 @@ const schema = a.schema({
       allow.owner().identityClaim('sub'),
       allow.groups(['Admin']).to(['read']),
     ]),
+
+  // Real-time Vote Activity for subscriptions
+  VoteActivity: a
+    .model({
+      activityId: a.id().required(),
+      voteId: a.string().required(),
+      userId: a.string().required(),
+      winnerId: a.string().required(),
+      loserId: a.string().required(),
+      winnerThumbnail: a.string().required(),
+      winnerName: a.string().required(),
+      loserThumbnail: a.string().required(),
+      loserName: a.string().required(),
+      category: a.string().required(),
+      country: a.string(),
+      timestamp: a.datetime().required(),
+      anonymizedUsername: a.string(),
+    })
+    .authorization(allow => [
+      allow.guest().to(['read']),
+      allow.authenticated().to(['read', 'create']),
+      allow.groups(['Admin']).to(['create', 'read', 'update', 'delete']),
+    ]),
+
+  // Real-time Stats Updates
+  StatsUpdate: a
+    .model({
+      updateId: a.id().required(),
+      type: a.enum(['totalVotes', 'activeUsers', 'topImage', 'categoryTrend']),
+      value: a.json().required(),
+      timestamp: a.datetime().required(),
+    })
+    .authorization(allow => [
+      allow.guest().to(['read']),
+      allow.authenticated().to(['read', 'create']),
+      allow.groups(['Admin']).to(['create', 'read', 'update', 'delete']),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
