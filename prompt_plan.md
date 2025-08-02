@@ -29,10 +29,10 @@
 - [x] Create AuthNavigator for login/register flow
 - [x] Build LoginScreen with email/password
 - [x] Build RegisterScreen with validation
-- [ ] Add ForgotPasswordScreen
-- [ ] Implement social login buttons (Google, Facebook, Apple)
-- [ ] Add loading states and error handling
-- [ ] Create platform-specific auth components (.web.tsx, .native.tsx)
+- [x] Add ForgotPasswordScreen
+- [x] Implement social login buttons (Google, Facebook, Apple)
+- [x] Add loading states and error handling
+- [x] Create platform-specific auth components (.web.tsx, .native.tsx)
 - [ ] Test auth flow on all platforms
 
 ### 3.2 User Profile - Priority: HIGH
