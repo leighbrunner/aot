@@ -23,6 +23,7 @@ const schema = a.schema({
       voteCount: a.integer().default(0),
       winCount: a.integer().default(0),
       rating: a.float().default(0),
+      generationId: a.string(),
       wonVotes: a.hasMany('Vote', 'winnerId'),
       lostVotes: a.hasMany('Vote', 'loserId'),
     })
@@ -166,6 +167,25 @@ const schema = a.schema({
     .authorization(allow => [
       allow.guest().to(['read']),
       allow.authenticated().to(['read', 'create']),
+      allow.groups(['Admin']).to(['create', 'read', 'update', 'delete']),
+    ]),
+    
+  // AI Generation Model
+  Generation: a
+    .model({
+      generationId: a.id().required(),
+      prompt: a.string().required(),
+      style: a.string(),
+      characterName: a.string(),
+      quantity: a.integer().default(1),
+      status: a.enum(['pending', 'processing', 'completed', 'failed', 'cancelled']),
+      images: a.json(),
+      metadata: a.json(),
+      error: a.string(),
+      cost: a.float(),
+      requestedBy: a.string().required(),
+    })
+    .authorization(allow => [
       allow.groups(['Admin']).to(['create', 'read', 'update', 'delete']),
     ]),
 });

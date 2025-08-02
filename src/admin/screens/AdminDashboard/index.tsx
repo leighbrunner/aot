@@ -247,7 +247,7 @@ export default function AdminDashboard() {
             {renderQuickAction(
               'Generate Content',
               'creation',
-              () => console.log('Generate content')
+              () => navigation.navigate('AIGeneration' as never)
             )}
             {renderQuickAction(
               'Manage Categories',
