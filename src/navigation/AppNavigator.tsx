@@ -2,12 +2,14 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { VotingScreen } from '@/screens/VotingScreen';
 import { LeaderboardScreen } from '@/screens/LeaderboardScreen';
+import StatsScreen from '@/screens/StatsScreen';
 import { ProfileNavigator } from './ProfileNavigator';
 import VotingErrorBoundary from '@/components/VotingErrorBoundary';
 
 export type RootTabParamList = {
   Voting: undefined;
   Leaderboard: undefined;
+  Stats: undefined;
   Profile: undefined;
 };
 
@@ -44,6 +46,14 @@ export const AppNavigator: React.FC = () => {
           options={{
             title: 'Leaderboard',
             tabBarLabel: 'Top Rated',
+          }}
+        />
+        <Tab.Screen 
+          name="Stats" 
+          component={StatsScreen}
+          options={{
+            title: 'My Stats',
+            tabBarLabel: 'Stats',
           }}
         />
         <Tab.Screen 
