@@ -3,10 +3,12 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 're
 import { Surface, TextInput, Button, Text, useTheme, Divider, IconButton } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { signIn, signInWithRedirect } from 'aws-amplify/auth';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const LoginScreen: React.FC = () => {
   const theme = useTheme();
   const navigation = useNavigation();
+  const { signInAnonymously } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,9 +43,10 @@ export const LoginScreen: React.FC = () => {
 
   const handleAnonymousLogin = async () => {
     setLoading(true);
+    setError('');
     try {
-      // Anonymous login will be implemented in next task
-      navigation.navigate('Voting' as never);
+      await signInAnonymously();
+      // Navigation will be handled by auth state change in RootNavigator
     } catch (err: any) {
       setError(err.message || 'Failed to continue anonymously');
     } finally {
@@ -96,6 +99,15 @@ export const LoginScreen: React.FC = () => {
             style={styles.button}
           >
             Sign In
+          </Button>
+          
+          <Button
+            mode="text"
+            onPress={() => navigation.navigate('ForgotPassword' as never)}
+            disabled={loading}
+            style={styles.textButton}
+          >
+            Forgot Password?
           </Button>
           
           <Button

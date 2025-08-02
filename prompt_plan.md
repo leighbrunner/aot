@@ -26,9 +26,9 @@
 
 ## Phase 3: Authentication & User Management (Current Focus)
 ### 3.1 Authentication UI - Priority: HIGH
-- [ ] Create AuthNavigator for login/register flow
-- [ ] Build LoginScreen with email/password
-- [ ] Build RegisterScreen with validation
+- [x] Create AuthNavigator for login/register flow
+- [x] Build LoginScreen with email/password
+- [x] Build RegisterScreen with validation
 - [ ] Add ForgotPasswordScreen
 - [ ] Implement social login buttons (Google, Facebook, Apple)
 - [ ] Add loading states and error handling

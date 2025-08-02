@@ -22,14 +22,41 @@ export const RegisterScreen: React.FC = () => {
       setError('Please fill in all fields');
       return false;
     }
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address');
+      return false;
+    }
+    
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return false;
     }
+    
+    // Password strength validation based on Cognito requirements from CLAUDE.md
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
       return false;
     }
+    if (!/[a-z]/.test(password)) {
+      setError('Password must contain at least one lowercase letter');
+      return false;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must contain at least one uppercase letter');
+      return false;
+    }
+    if (!/[0-9]/.test(password)) {
+      setError('Password must contain at least one number');
+      return false;
+    }
+    if (!/[^a-zA-Z0-9]/.test(password)) {
+      setError('Password must contain at least one special character');
+      return false;
+    }
+    
     if (!agreeToTerms) {
       setError('Please agree to the terms and conditions');
       return false;
