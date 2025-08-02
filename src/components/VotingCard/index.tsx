@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { View, StyleSheet, Dimensions, Pressable, Platform } from 'react-native';
 import { Card, Text, useTheme, IconButton, Surface } from 'react-native-paper';
 import Animated, {
   useSharedValue,
@@ -15,30 +15,36 @@ import {
   Gesture,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import { LazyImage } from '../LazyImage';
+import EnhancedImage from '../EnhancedImage';
+import * as Haptics from 'expo-haptics';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CARD_WIDTH = screenWidth * 0.9;
-const CARD_HEIGHT = screenHeight * 0.6;
+const CARD_HEIGHT = screenHeight * 0.65;
 const SWIPE_THRESHOLD = screenWidth * 0.3;
+const SWIPE_VELOCITY_THRESHOLD = 800;
 
 interface VotingCardProps {
   imageUrl: string;
   thumbnailUrl?: string;
   characterName: string;
   categories: string[];
+  rating?: number;
   onVote: (direction: 'left' | 'right') => void;
   onImageLoad?: () => void;
+  isActive?: boolean;
 }
 
-export const VotingCard: React.FC<VotingCardProps> = ({
+export default function VotingCard({
   imageUrl,
   thumbnailUrl,
   characterName,
   categories,
+  rating,
   onVote,
   onImageLoad,
-}) => {
+  isActive = true,
+}: VotingCardProps) {
   const theme = useTheme();
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -47,34 +53,57 @@ export const VotingCard: React.FC<VotingCardProps> = ({
 
   const handleVote = useCallback((direction: 'left' | 'right') => {
     'worklet';
+    if (Platform.OS !== 'web') {
+      runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+    }
     runOnJS(onVote)(direction);
   }, [onVote]);
 
   const resetPosition = useCallback(() => {
     'worklet';
-    translateX.value = withSpring(0);
-    translateY.value = withSpring(0);
+    translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+    translateY.value = withSpring(0, { damping: 20, stiffness: 200 });
     scale.value = withSpring(1);
   }, []);
 
   const animateOut = useCallback((direction: 'left' | 'right') => {
     'worklet';
-    const targetX = direction === 'left' ? -screenWidth : screenWidth;
-    translateX.value = withTiming(targetX, { duration: 300 }, () => {
+    const targetX = direction === 'left' ? -screenWidth * 1.5 : screenWidth * 1.5;
+    const targetY = translateY.value + 100;
+    
+    translateX.value = withTiming(targetX, { duration: 300 });
+    translateY.value = withTiming(targetY, { duration: 300 });
+    scale.value = withTiming(0.8, { duration: 300 }, () => {
       runOnJS(handleVote)(direction);
+      // Reset after animation
+      translateX.value = 0;
+      translateY.value = 0;
+      scale.value = 1;
     });
   }, [handleVote]);
 
   const panGesture = Gesture.Pan()
+    .enabled(isActive)
     .onStart(() => {
       scale.value = withSpring(0.95);
     })
     .onUpdate((event) => {
       translateX.value = event.translationX;
       translateY.value = event.translationY * 0.5;
+      
+      // Haptic feedback at threshold
+      if (Platform.OS !== 'web') {
+        const absX = Math.abs(event.translationX);
+        if (absX > SWIPE_THRESHOLD * 0.5 && absX < SWIPE_THRESHOLD * 0.6) {
+          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }
     })
     .onEnd((event) => {
-      if (Math.abs(event.translationX) > SWIPE_THRESHOLD) {
+      const shouldSwipe = Math.abs(event.translationX) > SWIPE_THRESHOLD ||
+                         Math.abs(event.velocityX) > SWIPE_VELOCITY_THRESHOLD;
+      
+      if (shouldSwipe) {
         animateOut(event.translationX > 0 ? 'right' : 'left');
       } else {
         resetPosition();
@@ -82,7 +111,8 @@ export const VotingCard: React.FC<VotingCardProps> = ({
     });
 
   const tapGesture = Gesture.Tap()
-    .numberOfTaps(2)
+    .enabled(isActive && Platform.OS === 'web')
+    .numberOfTaps(1)
     .onEnd((event) => {
       const tapX = event.x;
       const cardCenterX = CARD_WIDTH / 2;
@@ -93,7 +123,7 @@ export const VotingCard: React.FC<VotingCardProps> = ({
     const rotate = interpolate(
       translateX.value,
       [-screenWidth / 2, 0, screenWidth / 2],
-      [-15, 0, 15],
+      [-20, 0, 20],
       Extrapolate.CLAMP
     );
 
@@ -107,31 +137,21 @@ export const VotingCard: React.FC<VotingCardProps> = ({
     };
   });
 
-  const overlayOpacity = useAnimatedStyle(() => {
+  const leftOverlayStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       translateX.value,
-      [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-      [1, 0, 1],
+      [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD * 0.5, 0],
+      [1, 0.5, 0],
       Extrapolate.CLAMP
     );
     return { opacity };
   });
 
-  const leftOverlayOpacity = useAnimatedStyle(() => {
+  const rightOverlayStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       translateX.value,
-      [-SWIPE_THRESHOLD, 0],
-      [1, 0],
-      Extrapolate.CLAMP
-    );
-    return { opacity };
-  });
-
-  const rightOverlayOpacity = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [0, SWIPE_THRESHOLD],
-      [0, 1],
+      [0, SWIPE_THRESHOLD * 0.5, SWIPE_THRESHOLD],
+      [0, 0.5, 1],
       Extrapolate.CLAMP
     );
     return { opacity };
@@ -141,77 +161,104 @@ export const VotingCard: React.FC<VotingCardProps> = ({
     <GestureHandlerRootView style={styles.container}>
       <GestureDetector gesture={Gesture.Race(panGesture, tapGesture)}>
         <Animated.View style={[styles.cardContainer, animatedStyle]}>
-          <Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+          <Card style={[styles.card, { backgroundColor: theme.colors.surface }]} elevation={4}>
             <View style={styles.imageContainer}>
-              <LazyImage
-                source={imageUrl}
-                placeholder={thumbnailUrl}
-                size="medium"
-                priority="high"
-                imageStyle={styles.image}
-                onLoadEnd={() => {
+              <EnhancedImage
+                source={{ uri: imageUrl }}
+                thumbnailSource={thumbnailUrl ? { uri: thumbnailUrl } : undefined}
+                style={styles.image}
+                contentFit="cover"
+                useProgressive={true}
+                onLoad={() => {
                   setImageLoaded(true);
                   onImageLoad?.();
                 }}
-                showLoadingIndicator={true}
-                fadeInDuration={300}
               />
             </View>
             
             <Card.Content style={styles.content}>
-              <Text variant="titleLarge" style={styles.characterName}>
+              <Text variant="titleLarge" style={styles.characterName} numberOfLines={1}>
                 {characterName}
               </Text>
-              <View style={styles.categoriesContainer}>
-                {categories.map((category, index) => (
-                  <Surface key={index} style={styles.categoryChip}>
-                    <Text variant="labelSmall">{category}</Text>
-                  </Surface>
-                ))}
+              <View style={styles.metaInfo}>
+                <View style={styles.categoriesContainer}>
+                  {categories.slice(0, 2).map((category, index) => (
+                    <Surface key={index} style={[styles.categoryChip, { backgroundColor: theme.colors.secondaryContainer }]}>
+                      <Text variant="labelSmall" style={{ color: theme.colors.onSecondaryContainer }}>
+                        {category}
+                      </Text>
+                    </Surface>
+                  ))}
+                </View>
+                {rating !== undefined && rating > 0 && (
+                  <Text variant="bodySmall" style={styles.rating}>
+                    {Math.round(rating * 100)}% win
+                  </Text>
+                )}
               </View>
             </Card.Content>
 
             {/* Swipe indicators */}
-            <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayOpacity]}>
-              <IconButton
-                icon="close"
-                iconColor="white"
-                size={60}
-                style={styles.overlayIcon}
-              />
+            <Animated.View style={[styles.overlay, styles.leftOverlay, leftOverlayStyle]}>
+              <View style={styles.overlayContent}>
+                <IconButton
+                  icon="close"
+                  iconColor="white"
+                  size={60}
+                  style={styles.overlayIcon}
+                />
+                <Text variant="headlineMedium" style={styles.overlayText}>NOPE</Text>
+              </View>
             </Animated.View>
             
-            <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayOpacity]}>
-              <IconButton
-                icon="heart"
-                iconColor="white"
-                size={60}
-                style={styles.overlayIcon}
-              />
+            <Animated.View style={[styles.overlay, styles.rightOverlay, rightOverlayStyle]}>
+              <View style={styles.overlayContent}>
+                <IconButton
+                  icon="heart"
+                  iconColor="white"
+                  size={60}
+                  style={styles.overlayIcon}
+                />
+                <Text variant="headlineMedium" style={styles.overlayText}>LIKE</Text>
+              </View>
             </Animated.View>
           </Card>
           
           {/* Action buttons */}
-          <View style={styles.actionButtons}>
-            <Pressable
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => animateOut('left')}
-            >
-              <IconButton icon="close" iconColor="white" size={30} />
-            </Pressable>
-            
-            <Pressable
-              style={[styles.actionButton, styles.acceptButton]}
-              onPress={() => animateOut('right')}
-            >
-              <IconButton icon="heart" iconColor="white" size={30} />
-            </Pressable>
-          </View>
+          {isActive && (
+            <View style={styles.actionButtons}>
+              <Pressable
+                style={[styles.actionButton, styles.rejectButton, { backgroundColor: theme.colors.error }]}
+                onPress={() => animateOut('left')}
+              >
+                <IconButton icon="close" iconColor="white" size={28} />
+              </Pressable>
+              
+              <Pressable
+                style={[styles.actionButton, styles.superLikeButton, { backgroundColor: theme.colors.tertiary }]}
+                onPress={() => {
+                  // Future feature: super like
+                  if (Platform.OS !== 'web') {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  }
+                }}
+              >
+                <IconButton icon="star" iconColor="white" size={28} />
+              </Pressable>
+              
+              <Pressable
+                style={[styles.actionButton, styles.acceptButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => animateOut('right')}
+              >
+                <IconButton icon="heart" iconColor="white" size={28} />
+              </Pressable>
+            </View>
+          )}
         </Animated.View>
       </GestureDetector>
     </GestureHandlerRootView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -227,7 +274,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 20,
-    elevation: 5,
     overflow: 'hidden',
   },
   imageContainer: {
@@ -239,40 +285,60 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   content: {
-    padding: 15,
+    padding: 16,
   },
   characterName: {
     fontWeight: 'bold',
     marginBottom: 8,
   },
+  metaInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   categoriesContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    flex: 1,
   },
   categoryChip: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 16,
-    elevation: 1,
+  },
+  rating: {
+    opacity: 0.7,
+    marginLeft: 8,
   },
   overlay: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: '100%',
+    left: 0,
+    right: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
   leftOverlay: {
-    backgroundColor: 'rgba(255, 0, 0, 0.5)',
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
   },
   rightOverlay: {
-    backgroundColor: 'rgba(0, 255, 0, 0.5)',
+    backgroundColor: 'rgba(76, 175, 80, 0.8)',
+  },
+  overlayContent: {
+    alignItems: 'center',
   },
   overlayIcon: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     borderRadius: 50,
+  },
+  overlayText: {
+    color: 'white',
+    fontWeight: 'bold',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   actionButtons: {
     position: 'absolute',
@@ -280,21 +346,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 50,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
   },
   actionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
-  rejectButton: {
-    backgroundColor: '#ff4458',
-  },
-  acceptButton: {
-    backgroundColor: '#4fc3f7',
-  },
+  rejectButton: {},
+  superLikeButton: {},
+  acceptButton: {},
 });

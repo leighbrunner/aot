@@ -1,3 +1,8 @@
+import React from 'react';
+export { default } from './VotingScreen';
+
+// Legacy implementation preserved below for reference
+/*
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Alert, Dimensions, TouchableOpacity } from 'react-native';
 import { Text, Surface, ActivityIndicator, Button, Chip } from 'react-native-paper';
@@ -7,6 +12,7 @@ import { useVotingStore } from '../../store/voting.store';
 import { useImagePreloader } from '../../services/image/imagePreloader';
 import { useImageCache } from '../../services/image/imageCache';
 import EnhancedImage from '../../components/EnhancedImage';
+*/
 
 const { width: screenWidth } = Dimensions.get('window');
 const IMAGE_SIZE = screenWidth * 0.45;
