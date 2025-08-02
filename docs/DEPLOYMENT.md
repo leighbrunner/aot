@@ -40,31 +40,42 @@ S3_BUCKET=assortits-prod-images
 CLOUDFRONT_URL=https://d2xxxxx.cloudfront.net
 ```
 
-## Backend Deployment
+## Backend Deployment (Amplify Gen 2)
 
-### 1. Initialize Amplify
+### 1. Initialize Amplify Gen 2
 
 ```bash
 # First time setup
-amplify init --profile leigh
+export AWS_PROFILE=leigh
 
-# Select options:
-# - Environment: test (for testing) or prod (for production)
-# - Default editor: Visual Studio Code
-# - Authentication method: AWS profile
-# - Profile: leigh
+# Deploy sandbox environment
+npx ampx sandbox --profile leigh
+
+# For production deployment
+npx ampx pipeline-deploy --branch main --app-id YOUR_APP_ID
 ```
 
-### 2. Deploy Backend Infrastructure
+### 2. Configure Backend Resources
 
 ```bash
-# Deploy to test environment
-amplify env checkout test --profile leigh
-amplify push --yes --profile leigh
+# Run the configuration script
+./scripts/configure-backend-resources.sh
 
-# Deploy to production
-amplify env checkout prod --profile leigh
-amplify push --yes --profile leigh
+# This will:
+# - Set Lambda environment variables
+# - Configure resource permissions
+# - Update function configurations
+```
+
+### 3. Deploy with Social Authentication
+
+```bash
+# First check if OAuth secrets are configured
+./scripts/setup-social-auth.sh
+
+# If all secrets are valid, update amplify/auth/resource.ts
+# Then redeploy
+npx ampx sandbox --profile leigh
 ```
 
 ### 3. Deploy Additional Infrastructure

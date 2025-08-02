@@ -1,5 +1,6 @@
 import { defineStorage } from '@aws-amplify/backend';
 import { Stack } from 'aws-cdk-lib';
+import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -42,7 +43,7 @@ export const createStorageResources = (stack: Stack, bucket: s3.Bucket) => {
     id: 'MoveToIA',
     transitions: [{
       storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-      transitionAfter: 30,
+      transitionAfter: cdk.Duration.days(30),
     }],
   });
   

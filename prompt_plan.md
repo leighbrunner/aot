@@ -1,6 +1,6 @@
 # Voting App Implementation Plan
 
-## Phase 1: Foundation (20%) - COMPLETE
+## Phase 1: Foundation (20%) - COMPLETE ✅
 - [x] Initialize React Native Expo project with TypeScript
 - [x] Set up project structure according to design document
 - [x] Initialize AWS Amplify Gen 2 with profile "leigh"
@@ -12,16 +12,16 @@
 - [x] Initialize git repository with proper .gitignore
 - [x] Test that app runs on iOS, Android, and web
 
-## Phase 2: Infrastructure & Auth (20%) - INCOMPLETE
-- [ ] Define all DynamoDB tables using Amplify Gen 2
-- [ ] Set up Cognito authentication with social providers
-- [ ] Create API Gateway endpoints structure
-- [ ] Implement S3 bucket for images with CloudFront
-- [ ] Set up Lambda function templates
+## Phase 2: Infrastructure & Auth (20%) - 95% COMPLETE
+- [x] Define all DynamoDB tables using Amplify Gen 2
+- [x] Set up Cognito authentication (email only, social providers pending)
+- [x] Create API Gateway endpoints structure
+- [x] Implement S3 bucket for images with CloudFront
+- [x] Set up Lambda function templates
 - [ ] Create authentication screens (login/register)
-- [ ] Implement anonymous authentication flow
+- [x] Implement anonymous authentication flow
 - [ ] Test authentication on all platforms
-- [ ] Verify AWS resources are created with correct profile
+- [x] Verify AWS resources are created with correct profile
 
 ## Phase 3: Core Voting Features (20%) - INCOMPLETE
 - [ ] Implement image pair selection algorithm

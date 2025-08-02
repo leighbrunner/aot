@@ -23,10 +23,11 @@ const schema = a.schema({
       voteCount: a.integer().default(0),
       winCount: a.integer().default(0),
       rating: a.float().default(0),
+      wonVotes: a.hasMany('Vote', 'winnerId'),
+      lostVotes: a.hasMany('Vote', 'loserId'),
     })
     .secondaryIndexes(index => [
-      index('status').sortKeys(['createdAt']),
-      index('categories').sortKeys(['rating']),
+      index('status').sortKeys(['rating']),
       index('characterId').sortKeys(['imageId']),
     ])
     .authorization(allow => [
@@ -50,8 +51,8 @@ const schema = a.schema({
       user: a.belongsTo('User', 'userId'),
     })
     .secondaryIndexes(index => [
-      index('winnerId').sortKeys(['createdAt']),
-      index('userId').sortKeys(['createdAt']),
+      index('winnerId').sortKeys(['voteId']),
+      index('userId').sortKeys(['voteId']),
     ])
     .authorization(allow => [
       allow.owner().identityClaim('sub'),
@@ -68,6 +69,7 @@ const schema = a.schema({
       stats: a.json(),
       isAnonymous: a.boolean().default(true),
       votes: a.hasMany('Vote', 'userId'),
+      sessions: a.hasMany('Session', 'userId'),
     })
     .secondaryIndexes(index => [
       index('email').sortKeys(['userId']),
@@ -80,6 +82,7 @@ const schema = a.schema({
   // Analytics Table
   Analytics: a
     .model({
+      analyticsId: a.id().required(),
       type: a.enum(['image', 'category', 'character']),
       period: a.enum(['day', 'week', 'month', 'year', 'all']),
       date: a.string().required(),
@@ -88,7 +91,9 @@ const schema = a.schema({
       winCount: a.integer().default(0),
       winRate: a.float().default(0),
     })
-    .identifier(['type', 'period', 'date', 'itemId'])
+    .secondaryIndexes(index => [
+      index('type').sortKeys(['period', 'date', 'itemId']),
+    ])
     .authorization(allow => [
       allow.guest().to(['read']),
       allow.authenticated().to(['read']),

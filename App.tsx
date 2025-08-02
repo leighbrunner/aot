@@ -8,34 +8,10 @@ import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { ErrorHandler } from '@/utils/errorHandler';
 import { offlineManager } from '@/services/offline/offlineManager';
 import { Amplify } from 'aws-amplify';
-import { config } from '@/config/env';
+import outputs from './amplify_outputs.json';
 
-// Configure Amplify
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: config.COGNITO_USER_POOL_ID,
-      userPoolClientId: config.COGNITO_CLIENT_ID,
-      identityPoolId: config.COGNITO_IDENTITY_POOL_ID,
-      signUpVerificationMethod: 'code',
-      loginWith: {
-        oauth: {
-          domain: config.COGNITO_DOMAIN,
-          scopes: ['email', 'profile', 'openid'],
-          redirectSignIn: ['voting-app://'],
-          redirectSignOut: ['voting-app://'],
-          responseType: 'code',
-        },
-      },
-    },
-  },
-  Storage: {
-    S3: {
-      bucket: config.S3_BUCKET,
-      region: config.AWS_REGION,
-    },
-  },
-});
+// Configure Amplify with Gen 2 outputs
+Amplify.configure(outputs);
 
 function AppContent() {
   const { isDarkMode } = useTheme();

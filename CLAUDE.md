@@ -4,6 +4,39 @@
 
 A cross-platform React Native voting application where users choose between two images in various categories. The app supports multiple domains (assortits.com, kittensorpuppies.com, etc.) with separate deployments, features AI-generated content, comprehensive analytics, and future monetization capabilities.
 
+## Current Status (November 2024)
+
+### ✅ Completed
+- **Amplify Gen 2 Migration**: Successfully migrated from Amplify CLI to Amplify Gen 2
+- **Backend Infrastructure**: All DynamoDB tables, AppSync API, S3 storage, and Cognito auth deployed
+- **Sandbox Environment**: Running in ap-southeast-2 with AWS profile "leigh"
+- **TypeScript Configuration**: Full TypeScript backend with type-safe models
+
+### 🚧 In Progress
+- **Social Authentication**: OAuth providers configured but need real credentials
+- **Lambda Functions**: Structure created, business logic pending
+- **Frontend Integration**: Needs connection to new GraphQL API
+
+### 📝 Key Resources
+- **API Endpoint**: https://ow4fzjgjfzbwpniusojhmgwpwi.appsync-api.ap-southeast-2.amazonaws.com/graphql
+- **User Pool ID**: ap-southeast-2_wx6stbe2Z
+- **Identity Pool ID**: ap-southeast-2:dbf72613-dd37-486c-b2f5-3252ead6f76e
+
+### 🔧 Quick Commands
+```bash
+# Deploy sandbox
+AWS_PROFILE=leigh npx ampx sandbox
+
+# Configure backend
+./scripts/configure-backend-resources.sh
+
+# Test connection
+./scripts/test-backend-connection.sh
+
+# Run all setup
+./scripts/run-all-setup.sh
+```
+
 ## Critical Configuration
 
 ### AWS Profile
