@@ -7,6 +7,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { ErrorHandler } from '@/utils/errorHandler';
 import { offlineManager } from '@/services/offline/offlineManager';
+import { tokenManager } from '@/services/auth/tokenManager';
 import { Amplify } from 'aws-amplify';
 import outputs from './amplify_outputs.json';
 
@@ -22,6 +23,14 @@ function AppContent() {
     
     // Initialize offline manager
     offlineManager.init();
+    
+    // Initialize token manager
+    tokenManager.init();
+    
+    // Cleanup on unmount
+    return () => {
+      tokenManager.cleanup();
+    };
   }, []);
   
   return (
