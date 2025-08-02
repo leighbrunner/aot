@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import {
   Avatar,
   Button,
@@ -12,6 +12,7 @@ import {
   useTheme,
   ActivityIndicator,
   IconButton,
+  Switch,
 } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -20,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { generateClient } from 'aws-amplify/api';
 import { getUser } from '@/graphql/queries';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { biometricAuthService } from '@/services/auth/biometricAuth';
 import type { Schema } from '@/amplify/data/resource';
 
 const client = generateClient<Schema>();
@@ -39,9 +41,12 @@ export const ProfileScreen: React.FC = () => {
     longestStreak: 0,
     preferenceScore: 0.5,
   });
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
 
   useEffect(() => {
     loadProfile();
+    checkBiometricStatus();
   }, [user]);
 
   const loadProfile = async () => {
@@ -72,6 +77,68 @@ export const ProfileScreen: React.FC = () => {
       console.error('Error loading profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkBiometricStatus = async () => {
+    if (Platform.OS === 'web') return;
+    
+    await biometricAuthService.init();
+    const available = await biometricAuthService.isBiometricAvailable();
+    const enabled = await biometricAuthService.isBiometricEnabled();
+    
+    setBiometricAvailable(available);
+    setBiometricEnabled(enabled);
+  };
+
+  const toggleBiometric = async () => {
+    if (!biometricAvailable) {
+      Alert.alert(
+        'Not Available',
+        'Biometric authentication is not available on this device'
+      );
+      return;
+    }
+
+    if (biometricEnabled) {
+      // Disable biometric
+      Alert.alert(
+        'Disable Biometric',
+        'Are you sure you want to disable biometric authentication?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: async () => {
+              await biometricAuthService.disableBiometric();
+              setBiometricEnabled(false);
+            },
+          },
+        ]
+      );
+    } else {
+      // Enable biometric
+      const result = await biometricAuthService.authenticate('Enable biometric authentication');
+      if (result.success) {
+        // Get current auth token
+        const { tokenManager } = await import('@/services/auth/tokenManager');
+        const token = await tokenManager.getValidToken();
+        
+        if (token && user?.email) {
+          const enabled = await biometricAuthService.enableBiometric({
+            username: user.email,
+            secureToken: token,
+          });
+          
+          if (enabled) {
+            setBiometricEnabled(true);
+            Alert.alert('Success', 'Biometric authentication enabled');
+          } else {
+            Alert.alert('Error', 'Failed to enable biometric authentication');
+          }
+        }
+      }
     }
   };
 
@@ -199,6 +266,28 @@ export const ProfileScreen: React.FC = () => {
               onPress={() => navigation.navigate('EditProfile')}
             />
             <Divider />
+            {Platform.OS !== 'web' && !isAnonymous && (
+              <>
+                <List.Item
+                  title="Biometric Authentication"
+                  description={
+                    biometricAvailable 
+                      ? `Use ${biometricAuthService.getBiometricTypeString()} to sign in`
+                      : 'Not available on this device'
+                  }
+                  left={props => <List.Icon {...props} icon="fingerprint" />}
+                  right={() => (
+                    <Switch
+                      value={biometricEnabled}
+                      onValueChange={toggleBiometric}
+                      disabled={!biometricAvailable}
+                    />
+                  )}
+                  disabled={!biometricAvailable}
+                />
+                <Divider />
+              </>
+            )}
             <List.Item
               title="Privacy Settings"
               description="Manage your privacy preferences"

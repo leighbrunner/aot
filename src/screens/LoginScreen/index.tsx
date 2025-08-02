@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { Surface, TextInput, Button, Text, useTheme, Divider, IconButton } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { Surface, TextInput, Button, Text, useTheme, Divider, IconButton, Checkbox } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { signIn, signInWithRedirect } from 'aws-amplify/auth';
 import { useAuth } from '@/contexts/AuthContext';
+import { biometricAuthService } from '@/services/auth/biometricAuth';
+import { tokenManager } from '@/services/auth/tokenManager';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const LoginScreen: React.FC = () => {
   const theme = useTheme();
@@ -13,6 +16,53 @@ export const LoginScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    checkBiometricAvailability();
+    checkStoredCredentials();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    await biometricAuthService.init();
+    const isEnabled = await biometricAuthService.isBiometricEnabled();
+    setBiometricAvailable(isEnabled);
+  };
+
+  const checkStoredCredentials = async () => {
+    // Check if biometric login is available
+    const credentials = await biometricAuthService.getStoredCredentials();
+    if (credentials) {
+      // Automatically prompt for biometric login
+      handleBiometricLogin();
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await biometricAuthService.authenticate('Sign in with biometrics');
+      if (result.success) {
+        const credentials = await biometricAuthService.getStoredCredentials();
+        if (credentials) {
+          // Use stored secure token to sign in
+          await signIn({ 
+            username: credentials.username, 
+            password: credentials.secureToken 
+          });
+        }
+      } else {
+        setError(result.error || 'Biometric authentication failed');
+      }
+    } catch (err: any) {
+      setError('Biometric login failed. Please use password.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEmailLogin = async () => {
     if (!email || !password) {
@@ -24,7 +74,35 @@ export const LoginScreen: React.FC = () => {
     setError('');
 
     try {
-      await signIn({ username: email, password });
+      const result = await signIn({ username: email, password });
+      
+      // Check if we should prompt to enable biometric
+      if (rememberMe && Platform.OS !== 'web') {
+        const shouldPrompt = await biometricAuthService.promptToEnableBiometric();
+        if (shouldPrompt) {
+          Alert.alert(
+            'Enable Biometric Login',
+            `Would you like to enable ${biometricAuthService.getBiometricTypeString()} for faster sign in?`,
+            [
+              { text: 'Not Now', style: 'cancel' },
+              {
+                text: 'Enable',
+                onPress: async () => {
+                  // Create a secure token for biometric login
+                  const token = await tokenManager.getValidToken();
+                  if (token) {
+                    await biometricAuthService.enableBiometric({
+                      username: email,
+                      secureToken: token,
+                    });
+                  }
+                },
+              },
+            ]
+          );
+        }
+      }
+      
       // Navigation will be handled by auth state change
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
@@ -86,6 +164,22 @@ export const LoginScreen: React.FC = () => {
             disabled={loading}
           />
           
+          {Platform.OS !== 'web' && (
+            <View style={styles.rememberMeContainer}>
+              <Checkbox
+                status={rememberMe ? 'checked' : 'unchecked'}
+                onPress={() => setRememberMe(!rememberMe)}
+                disabled={loading}
+              />
+              <Text 
+                style={styles.rememberMeText}
+                onPress={() => setRememberMe(!rememberMe)}
+              >
+                Remember me
+              </Text>
+            </View>
+          )}
+          
           {error ? (
             <Text style={[styles.error, { color: theme.colors.error }]}>
               {error}
@@ -100,6 +194,24 @@ export const LoginScreen: React.FC = () => {
           >
             Sign In
           </Button>
+          
+          {biometricAvailable && Platform.OS !== 'web' && (
+            <Button
+              mode="outlined"
+              onPress={handleBiometricLogin}
+              loading={loading}
+              style={styles.biometricButton}
+              icon={() => (
+                <MaterialCommunityIcons 
+                  name="fingerprint" 
+                  size={24} 
+                  color={theme.colors.primary} 
+                />
+              )}
+            >
+              Sign in with {biometricAuthService.getBiometricTypeString()}
+            </Button>
+          )}
           
           <Button
             mode="text"
@@ -207,6 +319,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   anonymousButton: {
+    marginTop: 10,
+  },
+  rememberMeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    marginTop: -5,
+  },
+  rememberMeText: {
+    marginLeft: 8,
+  },
+  biometricButton: {
     marginTop: 10,
   },
 });
