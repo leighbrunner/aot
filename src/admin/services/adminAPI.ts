@@ -26,11 +26,42 @@ export interface PendingImage {
 export interface AdminAction {
   actionId: string;
   adminId: string;
-  action: 'approve' | 'reject' | 'delete' | 'promote' | 'edit';
+  action: 'approve' | 'reject' | 'delete' | 'promote' | 'edit' | 'create';
   targetType: 'image' | 'user' | 'category';
   targetId: string;
   metadata?: any;
   timestamp: string;
+}
+
+export interface AnalyticsData {
+  totalVotes: number;
+  votesChange: number;
+  activeUsers: number;
+  usersChange: number;
+  avgSessionDuration: number;
+  sessionChange: number;
+  engagementRate: number;
+  engagementChange: number;
+  votingActivity: {
+    labels: string[];
+    data: number[];
+  };
+  categoryPerformance: {
+    labels: string[];
+    data: number[];
+  };
+  demographics: Array<{
+    label: string;
+    value: number;
+  }>;
+  topContent: Array<{
+    name: string;
+    votes: number;
+    winRate: number;
+  }>;
+  newUsers: number;
+  returningUsers: number;
+  avgVotesPerUser: number;
 }
 
 class AdminAPI {
@@ -268,6 +299,86 @@ class AdminAPI {
       return response.data;
     } catch (error) {
       console.error('Failed to update category:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get analytics data
+   */
+  async getAnalytics(period: 'day' | 'week' | 'month' | 'year'): Promise<AnalyticsData> {
+    try {
+      // Mock data - in production this would come from a Lambda function
+      const endDate = new Date();
+      const startDate = new Date();
+      
+      switch (period) {
+        case 'day':
+          startDate.setDate(startDate.getDate() - 1);
+          break;
+        case 'week':
+          startDate.setDate(startDate.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setMonth(startDate.getMonth() - 1);
+          break;
+        case 'year':
+          startDate.setFullYear(startDate.getFullYear() - 1);
+          break;
+      }
+      
+      // Generate mock data
+      const labels = [];
+      const votingData = [];
+      const dataPoints = period === 'day' ? 24 : period === 'week' ? 7 : period === 'month' ? 30 : 12;
+      
+      for (let i = 0; i < dataPoints; i++) {
+        if (period === 'day') {
+          labels.push(`${i}:00`);
+        } else if (period === 'week') {
+          labels.push(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]);
+        } else if (period === 'month') {
+          labels.push(`${i + 1}`);
+        } else {
+          labels.push(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i]);
+        }
+        votingData.push(Math.floor(Math.random() * 1000) + 500);
+      }
+      
+      return {
+        totalVotes: 15423,
+        votesChange: 12.5,
+        activeUsers: 3421,
+        usersChange: 8.3,
+        avgSessionDuration: 12.5,
+        sessionChange: -2.1,
+        engagementRate: 68.5,
+        engagementChange: 5.2,
+        votingActivity: {
+          labels,
+          data: votingData,
+        },
+        categoryPerformance: {
+          labels: ['Ass', 'Tits', 'Face', 'Full Body', 'Artistic'],
+          data: [3245, 2890, 1567, 987, 456],
+        },
+        demographics: [
+          { label: '18-24', value: 35 },
+          { label: '25-34', value: 42 },
+          { label: '35-44', value: 15 },
+          { label: '45+', value: 8 },
+        ],
+        topContent: [
+          { name: 'Image #1234', votes: 2341, winRate: 78.5 },
+          { name: 'Image #5678', votes: 2145, winRate: 72.3 },
+          { name: 'Image #9012', votes: 1987, winRate: 69.8 },
+        ],
+        newUsers: 543,
+        returningUsers: 82.3,
+        avgVotesPerUser: 4.5,
+      };
+    } catch (error) {
+      console.error('Failed to get analytics:', error);
       throw error;
     }
   }

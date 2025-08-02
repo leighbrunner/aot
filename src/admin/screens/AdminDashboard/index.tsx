@@ -19,10 +19,12 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AdminRoute from '../../components/AdminRoute';
 import { adminAPI, type AdminStats } from '../../services/adminAPI';
 import { format } from 'date-fns';
+import { useNavigation } from '@react-navigation/native';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function AdminDashboard() {
+  const navigation = useNavigation();
   const theme = useTheme();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -255,7 +257,7 @@ export default function AdminDashboard() {
             {renderQuickAction(
               'View Analytics',
               'chart-line',
-              () => console.log('View analytics')
+              () => navigation.navigate('AnalyticsOverview' as never)
             )}
             {renderQuickAction(
               'User Management',
