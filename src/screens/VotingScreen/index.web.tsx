@@ -1,27 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Alert, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, Surface, ActivityIndicator, Button, Chip } from 'react-native-paper';
 import { votingAPI, type ImagePair } from '../../services/api/voting';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useVotingStore } from '../../store/voting.store';
-import { useImagePreloader } from '../../services/image/imagePreloader';
-import { useImageCache } from '../../services/image/imageCache';
-import EnhancedImage from '../../components/EnhancedImage';
-
-const { width: screenWidth } = Dimensions.get('window');
-const IMAGE_SIZE = screenWidth * 0.45;
 
 export default function VotingScreen() {
   const { user } = useAuthContext();
   const { addVote, incrementStreak } = useVotingStore();
-  const { preloadImages, queuePreload } = useImagePreloader();
-  const { cacheImage } = useImageCache();
   const [loading, setLoading] = useState(true);
   const [voting, setVoting] = useState(false);
   const [imagePair, setImagePair] = useState<ImagePair[] | null>(null);
-  const [nextPairs, setNextPairs] = useState<ImagePair[][]>([]);
   const [sessionId, setSessionId] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
 
   // Categories - in production, these would come from the API
   const categories = ['ass', 'tits', 'all'];
@@ -30,71 +22,21 @@ export default function VotingScreen() {
     loadImagePair();
   }, [selectedCategory]);
 
-  const loadImagePair = async (usePreloaded = false) => {
+  const loadImagePair = async () => {
     try {
-      if (usePreloaded && nextPairs.length > 0) {
-        // Use preloaded pair
-        const [nextPair, ...remainingPairs] = nextPairs;
-        setImagePair(nextPair);
-        setNextPairs(remainingPairs);
-        
-        // Preload more pairs in background
-        if (remainingPairs.length < 2) {
-          preloadNextPairs();
-        }
-      } else {
-        // Load fresh pair
-        setLoading(true);
-        const response = await votingAPI.getImagePair(
-          selectedCategory === 'all' ? undefined : selectedCategory
-        );
-        setImagePair(response.images);
-        setSessionId(response.sessionId);
-        
-        // Preload next pairs
-        preloadNextPairs();
-      }
+      setLoading(true);
+      setImageLoadErrors(new Set());
+      const response = await votingAPI.getImagePair(
+        selectedCategory === 'all' ? undefined : selectedCategory
+      );
+      setImagePair(response.images);
+      setSessionId(response.sessionId);
     } catch (error) {
-      Alert.alert('Error', 'Failed to load images. Please try again.');
+      alert('Failed to load images. Please try again.');
     } finally {
       setLoading(false);
     }
   };
-
-  const preloadNextPairs = useCallback(async () => {
-    try {
-      // Fetch next 2 pairs
-      const pairs = await Promise.all([
-        votingAPI.getImagePair(selectedCategory === 'all' ? undefined : selectedCategory),
-        votingAPI.getImagePair(selectedCategory === 'all' ? undefined : selectedCategory),
-      ]);
-      
-      // Add to next pairs
-      setNextPairs(prev => [...prev, ...pairs.map(p => p.images)]);
-      
-      // Preload all images from these pairs
-      const imageUrls = pairs.flatMap(p => 
-        p.images.flatMap(img => [img.url, img.thumbnailUrl])
-      );
-      queuePreload(imageUrls);
-      
-      // Cache images with metadata
-      pairs.forEach(pair => {
-        pair.images.forEach(img => {
-          cacheImage(img.url, {
-            characterName: img.characterName,
-            categories: img.categories,
-            rating: img.rating,
-          });
-          if (img.thumbnailUrl) {
-            cacheImage(img.thumbnailUrl, { isThumbnail: true });
-          }
-        });
-      });
-    } catch (error) {
-      console.warn('Failed to preload next pairs', error);
-    }
-  }, [selectedCategory, queuePreload, cacheImage]);
 
   const handleVote = async (winnerId: string, loserId: string) => {
     if (voting || !imagePair) return;
@@ -121,17 +63,23 @@ export default function VotingScreen() {
         });
         incrementStreak();
 
-        // Load next pair (use preloaded if available)
-        await loadImagePair(true);
+        // Load next pair
+        await loadImagePair();
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit vote. Please try again.');
+      alert('Failed to submit vote. Please try again.');
     } finally {
       setVoting(false);
     }
   };
 
+  const handleImageError = (imageId: string) => {
+    setImageLoadErrors(prev => new Set(prev).add(imageId));
+  };
+
   const renderImage = (image: ImagePair, position: 'left' | 'right') => {
+    const hasError = imageLoadErrors.has(image.id);
+    
     return (
       <TouchableOpacity 
         onPress={() => {
@@ -146,18 +94,23 @@ export default function VotingScreen() {
         style={styles.imageContainer}
       >
         <Surface style={styles.imageSurface} elevation={2}>
-          <EnhancedImage
-            source={{ uri: image.url }}
-            thumbnailSource={{ uri: image.thumbnailUrl }}
-            fallbackSource={{ uri: image.thumbnailUrl }}
-            style={styles.image}
-            contentFit="cover"
-            transition={300}
-            blurRadius={20}
-            useProgressive={true}
-            showErrorIcon={true}
-            errorText="Image unavailable"
-          />
+          {hasError ? (
+            <View style={[styles.image, styles.errorContainer]}>
+              <Text>Failed to load image</Text>
+            </View>
+          ) : (
+            <img
+              src={image.url}
+              alt={image.characterName}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+              onError={() => handleImageError(image.id)}
+              loading="lazy"
+            />
+          )}
           <View style={styles.imageInfo}>
             <Text variant="bodySmall" numberOfLines={1}>
               {image.characterName}
@@ -256,10 +209,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingHorizontal: 16,
+    maxWidth: 1200,
+    width: '100%',
+    alignSelf: 'center',
   },
   imageContainer: {
     flex: 1,
     marginHorizontal: 8,
+    maxWidth: 400,
+    cursor: 'pointer',
   },
   imageSurface: {
     borderRadius: 12,
@@ -268,6 +226,11 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     aspectRatio: 0.67,
+  },
+  errorContainer: {
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   imageInfo: {
     padding: 8,

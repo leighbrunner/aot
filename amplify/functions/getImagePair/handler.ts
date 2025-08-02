@@ -8,26 +8,31 @@ const docClient = DynamoDBDocumentClient.from(client);
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     const category = event.queryStringParameters?.category;
-    const userId = event.requestContext.authorizer?.claims?.sub || 'anonymous';
+    const userId = event.requestContext.authorizer?.claims?.sub || 
+                  event.headers?.['x-anonymous-id'] || 
+                  'anonymous';
+    const cloudfrontUrl = process.env.CLOUDFRONT_URL;
     
-    // Get approved images
-    const scanParams: any = {
+    // Get approved images using secondary index
+    const queryParams: any = {
       TableName: process.env.IMAGES_TABLE_NAME,
-      FilterExpression: '#status = :status',
+      IndexName: 'status-rating-index',
+      KeyConditionExpression: '#status = :status',
       ExpressionAttributeNames: {
         '#status': 'status',
       },
       ExpressionAttributeValues: {
         ':status': 'approved',
       },
+      ScanIndexForward: false, // Sort by rating descending
     };
     
     if (category) {
-      scanParams.FilterExpression += ' AND contains(categories, :category)';
-      scanParams.ExpressionAttributeValues[':category'] = category;
+      queryParams.FilterExpression = 'contains(categories, :category)';
+      queryParams.ExpressionAttributeValues[':category'] = category;
     }
     
-    const result = await docClient.send(new ScanCommand(scanParams));
+    const result = await docClient.send(new QueryCommand(queryParams));
     const images = result.Items || [];
     
     if (images.length < 2) {
@@ -78,14 +83,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       let idx2 = Math.floor(Math.random() * weightedImages.length);
       
       // Ensure we get different images (not just different indices)
-      while (weightedImages[idx2].imageId === weightedImages[idx1].imageId) {
+      while (weightedImages[idx2].id === weightedImages[idx1].id) {
         idx2 = Math.floor(Math.random() * weightedImages.length);
       }
       
       image1 = weightedImages[idx1];
       image2 = weightedImages[idx2];
       
-      const pairKey = [image1.imageId, image2.imageId].sort().join('-');
+      const pairKey = [image1.id, image2.id].sort().join('-');
       
       if (!votedPairs.has(pairKey)) {
         break;
@@ -94,6 +99,22 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       attempts++;
     } while (attempts < maxAttempts);
     
+    // Transform URLs to use CloudFront if available
+    const transformImageUrl = (image: any) => {
+      if (cloudfrontUrl && image.url) {
+        // Assuming images are stored with keys like "images/imageId.jpg"
+        const urlParts = image.url.split('/');
+        const key = urlParts.slice(-2).join('/'); // Get last two parts (e.g., "images/abc123.jpg")
+        image.url = `https://${cloudfrontUrl}/${key}`;
+      }
+      if (cloudfrontUrl && image.thumbnailUrl) {
+        const urlParts = image.thumbnailUrl.split('/');
+        const key = urlParts.slice(-2).join('/');
+        image.thumbnailUrl = `https://${cloudfrontUrl}/${key}`;
+      }
+      return image;
+    };
+
     return {
       statusCode: 200,
       headers: {
@@ -101,7 +122,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        images: [image1, image2],
+        images: [transformImageUrl(image1), transformImageUrl(image2)],
         sessionId: `session-${Date.now()}`,
       }),
     };

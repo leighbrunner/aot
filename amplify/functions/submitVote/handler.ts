@@ -1,6 +1,7 @@
 import type { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { randomUUID } from 'crypto';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -11,7 +12,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}');
     const { winnerId, loserId, category, sessionId } = body;
-    const userId = event.requestContext.authorizer?.claims?.sub || 'anonymous';
+    const userId = event.requestContext.authorizer?.claims?.sub || 
+                  event.headers['x-anonymous-id'] || 
+                  'anonymous';
     
     // Validate input
     if (!winnerId || !loserId || !category || !sessionId) {
@@ -26,65 +29,89 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
     
     // Create vote record
-    const voteId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const voteId = randomUUID();
     const timestamp = new Date().toISOString();
     
-    // Save vote to main table
+    // Save vote to Votes table
     await docClient.send(new PutCommand({
-      TableName: process.env.VOTING_TABLE_NAME,
+      TableName: process.env.VOTES_TABLE_NAME,
       Item: {
-        PK: `VOTE#${voteId}`,
-        SK: `USER#${userId}`,
-        GSI1PK: `USER#${userId}`,
-        GSI1SK: `VOTE#${timestamp}`,
-        GSI2PK: `IMAGE#${winnerId}`,
-        GSI2SK: `VOTE#${timestamp}`,
+        id: voteId,
         voteId,
         userId,
         winnerId,
         loserId,
         category,
         sessionId,
-        timestamp,
-        country: event.headers['CloudFront-Viewer-Country'] || 'Unknown',
+        country: event.headers['CloudFront-Viewer-Country'] || 
+                event.headers['X-Forwarded-For']?.split(',')[0] || 
+                'Unknown',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        __typename: 'Vote',
       },
+      ConditionExpression: 'attribute_not_exists(id)',
     }));
     
     // Update winner image stats
     await docClient.send(new UpdateCommand({
-      TableName: process.env.VOTING_TABLE_NAME,
+      TableName: process.env.IMAGES_TABLE_NAME,
       Key: { 
-        PK: `IMAGE#${winnerId}`,
-        SK: `METADATA`
+        id: winnerId,
       },
-      UpdateExpression: 'ADD voteCount :inc, winCount :inc SET rating = winCount / voteCount',
-      ExpressionAttributeValues: { ':inc': 1 },
-    }));
-    
-    // Update loser image stats
-    await docClient.send(new UpdateCommand({
-      TableName: process.env.VOTING_TABLE_NAME,
-      Key: { 
-        PK: `IMAGE#${loserId}`,
-        SK: `METADATA`
-      },
-      UpdateExpression: 'ADD voteCount :inc SET rating = winCount / voteCount',
-      ExpressionAttributeValues: { ':inc': 1 },
-    }));
-    
-    // Update user stats
-    await docClient.send(new UpdateCommand({
-      TableName: process.env.VOTING_TABLE_NAME,
-      Key: { 
-        PK: `USER#${userId}`,
-        SK: `PROFILE`
-      },
-      UpdateExpression: 'ADD totalVotes :inc SET lastVoteDate = :date',
-      ExpressionAttributeValues: {
+      UpdateExpression: 'ADD voteCount :inc, winCount :inc SET rating = winCount / voteCount, updatedAt = :timestamp',
+      ExpressionAttributeValues: { 
         ':inc': 1,
-        ':date': timestamp,
+        ':timestamp': timestamp,
       },
     }));
+    
+    // Update loser image stats  
+    await docClient.send(new UpdateCommand({
+      TableName: process.env.IMAGES_TABLE_NAME,
+      Key: { 
+        id: loserId,
+      },
+      UpdateExpression: 'ADD voteCount :inc SET rating = CASE WHEN winCount = :zero THEN :zero ELSE winCount / voteCount END, updatedAt = :timestamp',
+      ExpressionAttributeValues: { 
+        ':inc': 1,
+        ':zero': 0,
+        ':timestamp': timestamp,
+      },
+    }));
+    
+    // Update user stats if user exists
+    if (userId !== 'anonymous') {
+      try {
+        // First check if user exists
+        const userResult = await docClient.send(new GetCommand({
+          TableName: process.env.USERS_TABLE_NAME,
+          Key: { id: userId },
+        }));
+        
+        if (userResult.Item) {
+          const currentStats = userResult.Item.stats || {};
+          const updatedStats = {
+            ...currentStats,
+            totalVotes: (currentStats.totalVotes || 0) + 1,
+            lastVoteDate: timestamp,
+          };
+          
+          await docClient.send(new UpdateCommand({
+            TableName: process.env.USERS_TABLE_NAME,
+            Key: { id: userId },
+            UpdateExpression: 'SET stats = :stats, updatedAt = :timestamp',
+            ExpressionAttributeValues: {
+              ':stats': updatedStats,
+              ':timestamp': timestamp,
+            },
+          }));
+        }
+      } catch (error) {
+        console.error('Error updating user stats:', error);
+        // Continue even if user update fails
+      }
+    }
     
     const duration = Date.now() - startTime;
     console.log(`Vote processed in ${duration}ms`);

@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { VotingScreen } from '@/screens/VotingScreen';
 import { LeaderboardScreen } from '@/screens/LeaderboardScreen';
 import { ProfileNavigator } from './ProfileNavigator';
+import VotingErrorBoundary from '@/components/VotingErrorBoundary';
 
 export type RootTabParamList = {
   Voting: undefined;
@@ -11,6 +12,13 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+
+// Wrapped VotingScreen with error boundary
+const VotingScreenWithErrorBoundary: React.FC = () => (
+  <VotingErrorBoundary>
+    <VotingScreen />
+  </VotingErrorBoundary>
+);
 
 export const AppNavigator: React.FC = () => {
   return (
@@ -24,7 +32,7 @@ export const AppNavigator: React.FC = () => {
       >
         <Tab.Screen 
           name="Voting" 
-          component={VotingScreen}
+          component={VotingScreenWithErrorBoundary}
           options={{
             title: 'Vote',
             tabBarLabel: 'Vote',
