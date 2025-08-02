@@ -1,5 +1,4 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { VotingScreen } from '@/screens/VotingScreen';
 import { LeaderboardScreen } from '@/screens/LeaderboardScreen';
@@ -15,8 +14,7 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export const AppNavigator: React.FC = () => {
   return (
-    <NavigationContainer>
-      <Tab.Navigator
+    <Tab.Navigator
         initialRouteName="Voting"
         screenOptions={{
           headerShown: true,
@@ -49,6 +47,5 @@ export const AppNavigator: React.FC = () => {
           }}
         />
       </Tab.Navigator>
-    </NavigationContainer>
   );
 };

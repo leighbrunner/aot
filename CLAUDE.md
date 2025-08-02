@@ -4,38 +4,152 @@
 
 A cross-platform React Native voting application where users choose between two images in various categories. The app supports multiple domains (assortits.com, kittensorpuppies.com, etc.) with separate deployments, features AI-generated content, comprehensive analytics, and future monetization capabilities.
 
-## Current Status (November 2024)
+## Current Status (January 2025)
 
 ### ✅ Completed
 - **Amplify Gen 2 Migration**: Successfully migrated from Amplify CLI to Amplify Gen 2
 - **Backend Infrastructure**: All DynamoDB tables, AppSync API, S3 storage, and Cognito auth deployed
 - **Sandbox Environment**: Running in ap-southeast-2 with AWS profile "leigh"
 - **TypeScript Configuration**: Full TypeScript backend with type-safe models
+- **Web Compatibility**: Fixed React Native web bundling issues (import.meta, native components)
+- **Automation Scripts**: Complete suite for setup, testing, and deployment
 
 ### 🚧 In Progress
 - **Social Authentication**: OAuth providers configured but need real credentials
-- **Lambda Functions**: Structure created, business logic pending
-- **Frontend Integration**: Needs connection to new GraphQL API
+- **Lambda Functions**: Structure created, business logic pending implementation
+- **Frontend Features**: Voting UI, authentication screens, navigation
+- **GraphQL Integration**: Queries and mutations need to be connected
 
 ### 📝 Key Resources
 - **API Endpoint**: https://ow4fzjgjfzbwpniusojhmgwpwi.appsync-api.ap-southeast-2.amazonaws.com/graphql
 - **User Pool ID**: ap-southeast-2_wx6stbe2Z
 - **Identity Pool ID**: ap-southeast-2:dbf72613-dd37-486c-b2f5-3252ead6f76e
+- **Web App**: http://localhost:8081
 
 ### 🔧 Quick Commands
 ```bash
-# Deploy sandbox
-AWS_PROFILE=leigh npx ampx sandbox
+# Start development
+export AWS_PROFILE=leigh
+npm run web              # Start web app
+npm run ios              # Start iOS app
+npm run android          # Start Android app
 
-# Configure backend
-./scripts/configure-backend-resources.sh
+# Backend operations
+npx ampx sandbox         # Deploy sandbox
+npx ampx sandbox delete  # Delete sandbox
 
-# Test connection
-./scripts/test-backend-connection.sh
-
-# Run all setup
-./scripts/run-all-setup.sh
+# Automation scripts
+./scripts/run-all-setup.sh           # Complete setup
+./scripts/project-status.sh          # Check status
+./scripts/test-backend-connection.sh # Test backend
 ```
+
+### 🏗️ Architecture Decisions
+
+#### Platform-Specific Files
+- Use `.web.tsx` extensions for web-specific components
+- Use `.native.tsx` for mobile-specific components
+- Default `.tsx` files should work across platforms when possible
+
+#### State Management
+- Zustand for global state (voting history, user preferences)
+- React Context for auth state
+- Local component state for UI interactions
+
+#### API Integration Pattern
+```typescript
+// Use generated GraphQL operations
+import { generateClient } from 'aws-amplify/api';
+import { createImage, updateImage } from './graphql/mutations';
+import { listImages, getImage } from './graphql/queries';
+
+const client = generateClient();
+```
+
+#### Image Handling
+- Use `expo-image` for native platforms
+- Use standard `<img>` tags for web
+- Implement progressive loading with blur hash
+- Cache images aggressively
+
+### 🔐 Security Considerations
+
+1. **API Security**
+   - All mutations require authentication
+   - Public queries use API key
+   - Admin operations use IAM roles
+
+2. **Image Security**
+   - S3 buckets are private
+   - CloudFront serves images with signed URLs
+   - Implement image moderation before approval
+
+3. **Vote Integrity**
+   - Prevent duplicate votes via DynamoDB conditions
+   - Rate limit voting endpoints
+   - Track vote patterns for fraud detection
+
+### 🎯 Development Guidelines
+
+#### Component Structure
+```
+src/
+├── components/
+│   ├── VotingCard/
+│   │   ├── VotingCard.tsx      # Cross-platform
+│   │   ├── VotingCard.web.tsx  # Web-specific
+│   │   └── VotingCard.styles.ts
+│   └── shared/
+├── screens/
+├── services/
+└── utils/
+```
+
+#### Testing Strategy
+1. Unit tests for business logic
+2. Integration tests for API calls
+3. E2E tests for critical user flows
+4. Manual testing on all platforms
+
+#### Performance Targets
+- Initial load: < 3 seconds
+- Image load: < 500ms
+- API response: < 200ms
+- 60 FPS animations
+
+### 📋 Implementation Checklist
+
+Before implementing each feature:
+1. Check if it needs platform-specific code
+2. Design the GraphQL schema if needed
+3. Consider offline functionality
+4. Plan for error states
+5. Add proper TypeScript types
+6. Include loading states
+7. Test on all platforms
+
+### 🚀 Deployment Notes
+
+#### Environment Variables
+```bash
+# Required for deployment
+AWS_PROFILE=leigh
+EXPO_PUBLIC_API_URL=<from amplify_outputs.json>
+
+# Required for social auth (add to Parameter Store)
+/amplify/shared/GOOGLE_CLIENT_ID
+/amplify/shared/FACEBOOK_APP_ID
+/amplify/shared/APPLE_SERVICES_ID
+```
+
+#### Pre-deployment Checklist
+- [ ] All tests passing
+- [ ] No TypeScript errors
+- [ ] Environment variables set
+- [ ] Lambda functions tested
+- [ ] Database indexes optimized
+- [ ] CloudFront cache configured
+- [ ] Security review completed
 
 ## Critical Configuration
 

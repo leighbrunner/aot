@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
-import { AppNavigator } from '@/navigation/AppNavigator';
+import { RootNavigator } from '@/navigation/RootNavigator';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
@@ -26,7 +26,7 @@ function AppContent() {
   
   return (
     <View style={{ flex: 1 }}>
-      <AppNavigator />
+      <RootNavigator />
       <OfflineIndicator />
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
     </View>
