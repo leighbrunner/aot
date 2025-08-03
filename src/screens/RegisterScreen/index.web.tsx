@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Surface, TextInput, Button, Text, useTheme, Checkbox } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { signUp, confirmSignUp, signIn } from 'aws-amplify/auth';
+// Web version - no Amplify auth imports
 
 export const RegisterScreen: React.FC = () => {
   const theme = useTheme();
@@ -71,23 +71,8 @@ export const RegisterScreen: React.FC = () => {
     setError('');
 
     try {
-      const { isSignUpComplete, nextStep } = await signUp({
-        username: email,
-        password,
-        options: {
-          userAttributes: {
-            email,
-            preferred_username: username,
-          },
-        },
-      });
-
-      if (nextStep.signUpStep === 'CONFIRM_SIGN_UP') {
-        setNeedsConfirmation(true);
-      } else if (isSignUpComplete) {
-        // Auto sign in if confirmation is not needed
-        await signIn({ username: email, password });
-      }
+      // For web, we only support anonymous login
+      setError('Registration not supported on web. Please use anonymous mode.');
     } catch (err: any) {
       setError(err.message || 'Failed to sign up');
     } finally {
@@ -105,13 +90,8 @@ export const RegisterScreen: React.FC = () => {
     setError('');
 
     try {
-      await confirmSignUp({
-        username: email,
-        confirmationCode,
-      });
-      
-      // Sign in after confirmation
-      await signIn({ username: email, password });
+      // For web, we only support anonymous login
+      setError('Registration not supported on web. Please use anonymous mode.');
     } catch (err: any) {
       setError(err.message || 'Failed to confirm sign up');
     } finally {

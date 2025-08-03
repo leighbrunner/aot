@@ -1,34 +1,17 @@
 import { Amplify } from 'aws-amplify';
 import outputs from '../../amplify_outputs.json';
 
-// Configure Amplify with error handling
-export function configureAmplify() {
-  try {
-    // Create a clean config without OAuth
-    const config = {
-      Auth: {
-        Cognito: {
-          userPoolId: outputs.auth.user_pool_id,
-          userPoolClientId: outputs.auth.user_pool_client_id,
-          identityPoolId: outputs.auth.identity_pool_id,
-          allowGuestAccess: outputs.auth.unauthenticated_identities_enabled,
-        }
-      },
-      API: {
-        GraphQL: {
-          endpoint: outputs.data.url,
-          region: outputs.data.aws_region,
-          defaultAuthMode: 'userPool',
-          apiKey: outputs.data.api_key,
-        }
-      }
-    };
-    
-    Amplify.configure(config);
-    console.log('Amplify configured successfully');
-  } catch (error) {
-    console.error('Error configuring Amplify:', error);
+// Remove OAuth configuration for web to avoid errors
+const config = { ...outputs };
+if (typeof window !== 'undefined') {
+  // Running on web - remove OAuth config
+  if (config.auth && config.auth.oauth) {
+    delete config.auth.oauth;
   }
 }
 
-export { outputs as amplifyConfig };
+// Configure Amplify immediately
+Amplify.configure(config);
+
+// Export configured Amplify for other modules
+export { Amplify };

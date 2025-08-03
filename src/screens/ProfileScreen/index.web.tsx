@@ -17,12 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ProfileStackParamList } from '@/navigation/ProfileNavigator';
 import { useAuth } from '@/contexts/AuthContext';
-import { generateClient } from 'aws-amplify/api';
-import { getUser } from '@/graphql/queries';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import type { Schema } from '@/amplify/data/resource';
-
-const client = generateClient<Schema>();
 
 type ProfileNavigationProp = StackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
 
@@ -49,12 +44,23 @@ export const ProfileScreen: React.FC = () => {
     
     setLoading(true);
     try {
-      const response = await client.graphql({
-        query: getUser,
-        variables: { userId: user.userId },
-      });
-
-      const userData = response.data.getUser;
+      // Mock user data for web
+      const userData = {
+        userId: user.userId,
+        email: user.email,
+        username: user.username,
+        stats: JSON.stringify({
+          totalVotes: 150,
+          currentStreak: 5,
+          longestStreak: 12,
+          lastVoteDate: new Date().toISOString(),
+        }),
+        preferences: JSON.stringify({
+          primaryPreference: 'category1',
+          preferenceScore: 0.65,
+        }),
+      };
+      
       if (userData) {
         setProfile(userData);
         

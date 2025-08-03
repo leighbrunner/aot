@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authService, AuthState } from '@/services/auth/authService';
+import { authService, AuthState } from '@/services/auth';
 
 interface AuthContextType extends AuthState {
   signInAnonymously: () => Promise<void>;

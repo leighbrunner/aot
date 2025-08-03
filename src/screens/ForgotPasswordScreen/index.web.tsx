@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Surface, TextInput, Button, Text, useTheme } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { resetPassword, confirmResetPassword } from 'aws-amplify/auth';
+// Web version - no Amplify auth imports
 
 export const ForgotPasswordScreen: React.FC = () => {
   const theme = useTheme();
@@ -50,8 +50,8 @@ export const ForgotPasswordScreen: React.FC = () => {
     setError('');
 
     try {
-      await resetPassword({ username: email });
-      setStep('confirm');
+      // For web, we only support anonymous login
+      setError('Password reset not supported on web. Please use anonymous mode.');
     } catch (err: any) {
       setError(err.message || 'Failed to send reset code');
     } finally {
@@ -80,11 +80,9 @@ export const ForgotPasswordScreen: React.FC = () => {
     setError('');
 
     try {
-      await confirmResetPassword({
-        username: email,
-        confirmationCode,
-        newPassword,
-      });
+      // For web, we only support anonymous login
+      setError('Password reset not supported on web. Please use anonymous mode.');
+      return;
       
       // Navigate back to login screen on success
       navigation.navigate('Login' as never);

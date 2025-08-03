@@ -1,5 +1,4 @@
-// Import auth functions carefully to avoid OAuth issues
-import { getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
+// Web-specific auth service that doesn't use Amplify Auth
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -14,7 +13,7 @@ export interface AuthState {
   username: string | null;
 }
 
-class AuthService {
+class WebAuthService {
   private currentAuthState: AuthState = {
     isAuthenticated: false,
     isAnonymous: false,
@@ -25,20 +24,7 @@ class AuthService {
 
   async initializeAuth(): Promise<AuthState> {
     try {
-      // Check for authenticated user
-      const user = await getCurrentUser();
-      if (user) {
-        this.currentAuthState = {
-          isAuthenticated: true,
-          isAnonymous: false,
-          userId: user.userId,
-          email: user.signInDetails?.loginId || null,
-          username: user.username,
-        };
-        return this.currentAuthState;
-      }
-    } catch (error) {
-      // No authenticated user, check for anonymous session
+      // Check for anonymous session
       const anonymousId = await AsyncStorage.getItem(ANONYMOUS_USER_KEY);
       if (anonymousId) {
         this.currentAuthState = {
@@ -50,6 +36,8 @@ class AuthService {
         };
         return this.currentAuthState;
       }
+    } catch (error) {
+      console.error('Error initializing auth:', error);
     }
 
     // No user found
@@ -89,51 +77,23 @@ class AuthService {
     }
   }
 
-  async convertAnonymousToRegistered(email: string, password: string): Promise<void> {
-    if (!this.currentAuthState.isAnonymous) {
-      throw new Error('User is not anonymous');
-    }
+  async signInUser(email: string, password: string): Promise<AuthState> {
+    throw new Error('Sign in not supported on web. Use anonymous mode.');
+  }
 
-    const anonymousId = this.currentAuthState.userId;
-    
-    try {
-      // Sign up with email/password
-      await signUp({
-        username: email,
-        password,
-        options: {
-          userAttributes: {
-            email,
-            'custom:previousAnonymousId': anonymousId || '',
-          },
-        },
-      });
-      
-      // Clear anonymous session
-      await AsyncStorage.removeItem(ANONYMOUS_USER_KEY);
-      await AsyncStorage.removeItem(ANONYMOUS_SESSION_KEY);
-      
-      // Sign in with new credentials
-      await signIn({ username: email, password });
-      
-      // Update auth state
-      await this.initializeAuth();
-    } catch (error) {
-      console.error('Error converting anonymous user:', error);
-      throw error;
-    }
+  async signUpUser(email: string, password: string): Promise<AuthState> {
+    throw new Error('Sign up not supported on web. Use anonymous mode.');
+  }
+
+  async resetPassword(email: string): Promise<void> {
+    throw new Error('Password reset not supported on web.');
   }
 
   async signOutUser(): Promise<void> {
     try {
-      if (this.currentAuthState.isAnonymous) {
-        // Clear anonymous session
-        await AsyncStorage.removeItem(ANONYMOUS_USER_KEY);
-        await AsyncStorage.removeItem(ANONYMOUS_SESSION_KEY);
-      } else {
-        // Sign out authenticated user
-        await signOut();
-      }
+      // Clear anonymous session
+      await AsyncStorage.removeItem(ANONYMOUS_USER_KEY);
+      await AsyncStorage.removeItem(ANONYMOUS_SESSION_KEY);
       
       // Reset auth state
       this.currentAuthState = {
@@ -151,14 +111,8 @@ class AuthService {
 
   async getAuthToken(): Promise<string | null> {
     try {
-      if (this.currentAuthState.isAnonymous) {
-        // Return anonymous session ID as token
-        return await AsyncStorage.getItem(ANONYMOUS_SESSION_KEY);
-      }
-      
-      // Get authenticated user token
-      const session = await fetchAuthSession();
-      return session.tokens?.idToken?.toString() || null;
+      // Return anonymous session ID as token
+      return await AsyncStorage.getItem(ANONYMOUS_SESSION_KEY);
     } catch (error) {
       console.error('Error getting auth token:', error);
       return null;
@@ -176,6 +130,11 @@ class AuthService {
   isAnonymous(): boolean {
     return this.currentAuthState.isAnonymous;
   }
+
+  // Stub methods for compatibility
+  async convertAnonymousToRegistered(email: string, password: string): Promise<void> {
+    throw new Error('Account conversion not supported on web.');
+  }
 }
 
-export const authService = new AuthService();
+export const authService = new WebAuthService();

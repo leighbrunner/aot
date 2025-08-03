@@ -13,12 +13,17 @@ A cross-platform React Native voting application where users choose between two 
 - **TypeScript Configuration**: Full TypeScript backend with type-safe models
 - **Web Compatibility**: Fixed React Native web bundling issues (import.meta, native components)
 - **Automation Scripts**: Complete suite for setup, testing, and deployment
+- **React Native Web Support**: App now runs on web with platform-specific implementations
+- **OAuth Error Resolution**: Fixed Amplify OAuth listener errors on web platform
+- **Frontend Features**: Voting UI, authentication screens, navigation, leaderboard
+- **Mock Services**: Web-specific services for auth, voting, and leaderboard
 
 ### 🚧 In Progress
+- **Admin Dashboard**: Need to implement admin screens for content management
+- **Image Generation**: AI image generation for characters
 - **Social Authentication**: OAuth providers configured but need real credentials
 - **Lambda Functions**: Structure created, business logic pending implementation
-- **Frontend Features**: Voting UI, authentication screens, navigation
-- **GraphQL Integration**: Queries and mutations need to be connected
+- **GraphQL Integration**: Queries and mutations need to be connected for native platforms
 
 ### 📝 Key Resources
 - **API Endpoint**: https://ow4fzjgjfzbwpniusojhmgwpwi.appsync-api.ap-southeast-2.amazonaws.com/graphql
@@ -30,7 +35,8 @@ A cross-platform React Native voting application where users choose between two 
 ```bash
 # Start development
 export AWS_PROFILE=leigh
-npm run web              # Start web app
+npm run web              # Start web app (port 8084)
+npm run web:dev          # Alternative web start command
 npm run ios              # Start iOS app
 npm run android          # Start Android app
 
@@ -50,6 +56,27 @@ npx ampx sandbox delete  # Delete sandbox
 - Use `.web.tsx` extensions for web-specific components
 - Use `.native.tsx` for mobile-specific components
 - Default `.tsx` files should work across platforms when possible
+
+#### Web Platform Support (NEW)
+Due to AWS Amplify OAuth limitations on React Native Web, we implemented:
+
+1. **Metro Bundler Configuration** (`metro.config.js`):
+   - Custom resolver redirects OAuth modules to empty stubs on web
+   - Prevents OAuth listener errors at build time
+
+2. **Platform-Specific Services**:
+   - `webAuthService.ts` - Anonymous auth only for web
+   - `webVoting.ts` - Mock voting API for web
+   - `webLeaderboard.ts` - Mock leaderboard data
+   - `webRealtimeService.ts` - Stub for realtime features
+
+3. **Conditional Amplify Configuration**:
+   - `amplify.web.ts` - Configures Amplify without Auth module
+   - Prevents OAuth initialization errors on web
+
+4. **Empty Module Stubs** (`src/utils/`):
+   - `empty-module.js` - Stubs for OAuth imports
+   - `empty-auth-module.js` - Stubs for Amplify auth imports
 
 #### State Management
 - Zustand for global state (voting history, user preferences)

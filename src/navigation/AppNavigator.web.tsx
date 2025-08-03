@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { VotingScreen } from '@/screens/VotingScreen';
-import { LeaderboardScreen } from '@/screens/LeaderboardScreen';
+import VotingScreen from '@/screens/VotingScreen';
+import LeaderboardScreen from '@/screens/LeaderboardScreen';
 import { ProfileScreen } from '@/screens/ProfileScreen';
 
 export type RootTabParamList = {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Surface, TextInput, Button, Text, useTheme, Divider, IconButton } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { signIn, signInWithRedirect } from 'aws-amplify/auth';
+// Web version - no Amplify auth imports
 import { useAuth } from '@/contexts/AuthContext';
 
 export const LoginScreen: React.FC = () => {
@@ -24,8 +24,8 @@ export const LoginScreen: React.FC = () => {
     setError('');
 
     try {
-      await signIn({ username: email, password });
-      // Navigation will be handled by auth state change
+      // For web, we only support anonymous login
+      setError('Email login not supported on web. Please use anonymous mode.');
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
     } finally {
@@ -35,7 +35,8 @@ export const LoginScreen: React.FC = () => {
 
   const handleSocialLogin = async (provider: 'Google' | 'Facebook' | 'Apple') => {
     try {
-      await signInWithRedirect({ provider });
+      // For web, we only support anonymous login
+      setError('Social login not supported on web. Please use anonymous mode.');
     } catch (err: any) {
       setError(err.message || `Failed to sign in with ${provider}`);
     }

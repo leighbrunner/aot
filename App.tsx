@@ -1,18 +1,20 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { ErrorHandler } from '@/utils/errorHandler';
 import { offlineManager } from '@/services/offline/offlineManager';
-import { tokenManager } from '@/services/auth/tokenManager';
-import { Amplify } from 'aws-amplify';
-import outputs from './amplify_outputs.json';
+import { tokenManager } from '@/services/auth/tokenManager/index';
 
-// Configure Amplify with Gen 2 outputs
-Amplify.configure(outputs);
+// Configure Amplify based on platform
+if (Platform.OS === 'web') {
+  require('@/config/amplify.web');
+} else {
+  require('@/config/amplify');
+}
 
 function AppContent() {
   const { isDarkMode } = useTheme();

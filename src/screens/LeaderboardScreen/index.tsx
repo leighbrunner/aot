@@ -18,9 +18,9 @@ import {
   Banner,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { leaderboardAPI, type LeaderboardItem, type Period } from '../../services/api/leaderboard';
+import { leaderboardAPI, type LeaderboardItem, type Period } from '../../services/api/leaderboard/index';
 import LeaderboardItem from '../../components/LeaderboardItem';
-import { realtimeService } from '../../services/realtime/realtimeService';
+import { realtimeService } from '../../services/realtime/index';
 import LiveVoteCounter from '../../components/LiveVoteCounter';
 import ActiveUsersIndicator from '../../components/ActiveUsersIndicator';
 
@@ -61,21 +61,21 @@ export default function LeaderboardScreen() {
     }
     
     try {
-      const result = await leaderboardAPI.getLeaderboard({
+      const result = await leaderboardAPI.getTopImages({
         period,
         category: category === 'all' ? undefined : category,
         limit: 20,
-        nextToken: loadMore ? nextToken : undefined,
+        offset: loadMore ? items.length : 0,
       });
       
       if (loadMore) {
-        setItems(prev => [...prev, ...result.items]);
+        setItems(prev => [...prev, ...result]);
       } else {
-        setItems(result.items);
+        setItems(result);
       }
       
-      setNextToken(result.nextToken);
-      setHasMore(!!result.nextToken);
+      setNextToken(null);
+      setHasMore(result.length === 20);
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
     } finally {

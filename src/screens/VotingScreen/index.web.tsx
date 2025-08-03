@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, Surface, ActivityIndicator, Button, Chip } from 'react-native-paper';
-import { votingAPI, type ImagePair } from '../../services/api/voting';
-import { useAuthContext } from '../../contexts/AuthContext';
+import { votingAPI, type ImagePair } from '../../services/api/voting/index';
+import { useAuth } from '../../contexts/AuthContext';
 import { useVotingStore } from '../../store/voting.store';
 
 export default function VotingScreen() {
-  const { user } = useAuthContext();
-  const { addVote, incrementStreak } = useVotingStore();
+  const { userId, isAuthenticated } = useAuth();
+  const { addVote, updateStreak, currentStreak, longestStreak } = useVotingStore();
   const [loading, setLoading] = useState(true);
   const [voting, setVoting] = useState(false);
   const [imagePair, setImagePair] = useState<ImagePair[] | null>(null);
@@ -55,16 +55,18 @@ export default function VotingScreen() {
       if (result.success) {
         // Update local store
         addVote({
-          id: result.voteId,
+          id: result.voteId || `vote_${Date.now()}`,
           winnerId,
           loserId,
           category: selectedCategory || 'all',
           timestamp: new Date().toISOString(),
         });
-        incrementStreak();
+        updateStreak(currentStreak + 1, Math.max(currentStreak + 1, longestStreak));
 
         // Load next pair
         await loadImagePair();
+      } else {
+        throw new Error(result.error || 'Vote submission failed');
       }
     } catch (error) {
       alert('Failed to submit vote. Please try again.');

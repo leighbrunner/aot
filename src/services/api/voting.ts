@@ -4,7 +4,15 @@ import type { Schema } from '../../../amplify/data/resource';
 import { voteQueue } from '../voting/voteQueue';
 import NetInfo from '@react-native-community/netinfo';
 
-const client = generateClient<Schema>();
+// Lazy initialize the client to ensure Amplify is configured first
+let client: ReturnType<typeof generateClient<Schema>> | null = null;
+
+const getClient = () => {
+  if (!client) {
+    client = generateClient<Schema>();
+  }
+  return client;
+};
 
 export interface ImagePair {
   id: string;
@@ -133,7 +141,7 @@ export const votingAPI = {
   // Get user voting statistics
   async getUserStats(userId: string) {
     try {
-      const user = await client.graphql({
+      const user = await getClient().graphql({
         query: `
           query GetUser($id: ID!) {
             getUser(id: $id) {
@@ -156,7 +164,7 @@ export const votingAPI = {
   // Get voting history
   async getVotingHistory(userId: string, limit = 20) {
     try {
-      const response = await client.graphql({
+      const response = await getClient().graphql({
         query: `
           query ListVotesByUser($userId: String!, $limit: Int) {
             votesByUserId(userId: $userId, limit: $limit) {
