@@ -79,3 +79,53 @@ amplify/amplify_outputs.json
 
 # Expo logs
 expo.log
+
+# AI Generation
+ai-generation/setup/stable-diffusion-webui/
+ai-generation/models/training_data/
+ai-generation/models/lora/
+ai-generation/models/final_images/
+ai-generation/test_outputs/
+ai-generation/workflows/generation_log.txt
+ai-generation/*.db
+ai-generation/api/__pycache__/
+ai-generation/scripts/__pycache__/
+ai-generation/workflows/__pycache__/
+ai-generation/**/__pycache__/
+ai-generation/**/*.pyc
+ai-generation/setup/*.log
+ai-generation/setup/errors.log
+
+# Test outputs
+test_outputs/
+
+# Generated images
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+sd-venv/
+**/sd-venv/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# API keys and secrets (extra safety)
+api_key.txt
+**/api_key.txt
+settings.env
+**/settings.env

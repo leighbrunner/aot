@@ -28,138 +28,140 @@ import {
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AdminRoute from '../../components/AdminRoute';
-import { aiService, type GenerationResult, type PromptTemplate } from '../../../services/ai/aiService';
+import { aiGenerationAPI } from '../../../services/api/admin/aiGeneration';
 import { format } from 'date-fns';
 
-interface TemplateVariables {
-  [key: string]: any;
+interface Character {
+  id: string;
+  name: string;
+  ethnicity: string;
+  body_type: string;
+  breast_size: string;
+  ass_size: string;
+  hair: string;
+  age_range: string;
+}
+
+interface GenerationJob {
+  id: string;
+  character_id: string;
+  status: string;
+  created_at: string;
+  completed_at?: string;
+  tags?: any;
+  error?: string;
 }
 
 export default function AIGeneration() {
   const theme = useTheme();
   const [loading, setLoading] = useState(false);
-  const [generationMode, setGenerationMode] = useState<'custom' | 'template'>('template');
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [templateVariables, setTemplateVariables] = useState<TemplateVariables>({});
-  const [quantity, setQuantity] = useState(1);
-  const [characterName, setCharacterName] = useState('');
-  const [recentGenerations, setRecentGenerations] = useState<GenerationResult[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [generationSettings, setGenerationSettings] = useState({
+    focus: 'mixed' as 'ass' | 'tits' | 'mixed',
+    count: 20,
+    includeNude: false,
+  });
+  const [jobs, setJobs] = useState<GenerationJob[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedGeneration, setSelectedGeneration] = useState<GenerationResult | null>(null);
+  const [selectedJob, setSelectedJob] = useState<GenerationJob | null>(null);
+  const [polling, setPolling] = useState(false);
   
-  // Get prompt templates
-  const templates = aiService.getPromptTemplates();
-
   useEffect(() => {
-    loadGenerationHistory();
-  }, []);
+    loadData();
+    // Poll for job updates
+    const interval = setInterval(() => {
+      if (polling) {
+        loadJobs();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [polling]);
 
-  useEffect(() => {
-    // Set default template and variables
-    if (templates.length > 0 && !selectedTemplate) {
-      const defaultTemplate = templates[0];
-      setSelectedTemplate(defaultTemplate.id);
-      initializeTemplateVariables(defaultTemplate);
-    }
-  }, [templates]);
-
-  const loadGenerationHistory = async () => {
+  const loadData = async () => {
     try {
-      setLoadingHistory(true);
-      const history = await aiService.getGenerationHistory(10);
-      setRecentGenerations(history);
+      setLoadingData(true);
+      const [charactersData, jobsData] = await Promise.all([
+        aiGenerationAPI.getCharacters(),
+        aiGenerationAPI.getJobs({ limit: 10 }),
+      ]);
+      setCharacters(charactersData.characters || []);
+      setJobs(jobsData || []);
+      
+      // Enable polling if any jobs are processing
+      const hasActiveJobs = jobsData.some(
+        (job: GenerationJob) => job.status === 'pending' || job.status === 'processing'
+      );
+      setPolling(hasActiveJobs);
     } catch (error) {
-      console.error('Failed to load generation history:', error);
+      console.error('Failed to load data:', error);
+      Alert.alert('Error', 'Failed to load AI generation data');
     } finally {
-      setLoadingHistory(false);
+      setLoadingData(false);
     }
   };
 
-  const initializeTemplateVariables = (template: PromptTemplate) => {
-    const variables: TemplateVariables = {};
-    template.variables.forEach(variable => {
-      variables[variable.name] = variable.default || '';
-    });
-    setTemplateVariables(variables);
-  };
-
-  const handleTemplateChange = (templateId: string) => {
-    setSelectedTemplate(templateId);
-    const template = templates.find(t => t.id === templateId);
-    if (template) {
-      initializeTemplateVariables(template);
-    }
-  };
-
-  const updateTemplateVariable = (name: string, value: any) => {
-    setTemplateVariables(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const getGeneratedPrompt = (): string => {
-    if (generationMode === 'custom') {
-      return customPrompt;
-    }
-    
-    if (!selectedTemplate) return '';
-    
+  const loadJobs = async () => {
     try {
-      return aiService.buildPromptFromTemplate(selectedTemplate, templateVariables);
+      const jobsData = await aiGenerationAPI.getJobs({ limit: 10 });
+      setJobs(jobsData || []);
+      
+      const hasActiveJobs = jobsData.some(
+        (job: GenerationJob) => job.status === 'pending' || job.status === 'processing'
+      );
+      setPolling(hasActiveJobs);
     } catch (error) {
-      console.error('Failed to build prompt:', error);
-      return '';
+      console.error('Failed to load jobs:', error);
     }
+  };
+
+  const handleCharacterSelect = (character: Character) => {
+    setSelectedCharacter(character);
+    setModalVisible(true);
   };
 
   const handleGenerate = async () => {
-    const prompt = getGeneratedPrompt();
-    
-    if (!prompt.trim()) {
-      Alert.alert('Error', 'Please enter a prompt or select a template');
+    if (!selectedCharacter) {
+      Alert.alert('Error', 'Please select a character');
       return;
     }
     
-    if (quantity < 1 || quantity > 10) {
-      Alert.alert('Error', 'Quantity must be between 1 and 10');
+    if (generationSettings.count < 1 || generationSettings.count > 100) {
+      Alert.alert('Error', 'Count must be between 1 and 100');
       return;
     }
-    
-    const estimatedCost = aiService.estimateGenerationCost(quantity);
     
     Alert.alert(
       'Confirm Generation',
-      `Generate ${quantity} image${quantity > 1 ? 's' : ''} for approximately $${estimatedCost.toFixed(2)}?`,
+      `Generate ${generationSettings.count} images for ${selectedCharacter.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Generate',
           onPress: async () => {
             setLoading(true);
+            setModalVisible(false);
             try {
-              const result = await aiService.queueGeneration({
-                prompt,
-                characterName: characterName || undefined,
-                quantity,
-                metadata: generationMode === 'template' ? templateVariables : undefined,
-              });
+              const jobs = await aiGenerationAPI.batchGenerate(
+                selectedCharacter.id,
+                generationSettings.count,
+                {
+                  focus: generationSettings.focus,
+                  includeNude: generationSettings.includeNude,
+                }
+              );
               
               Alert.alert(
                 'Success',
-                'Generation queued successfully. Check the history for updates.',
-                [{ text: 'OK', onPress: () => loadGenerationHistory() }]
+                `Started generation of ${jobs.length} images. Check the job queue for progress.`,
+                [{ text: 'OK', onPress: () => loadData() }]
               );
               
-              // Reset form
-              setCustomPrompt('');
-              setCharacterName('');
-              setQuantity(1);
+              setPolling(true);
             } catch (error) {
-              console.error('Failed to queue generation:', error);
-              Alert.alert('Error', 'Failed to queue generation');
+              console.error('Failed to start generation:', error);
+              Alert.alert('Error', 'Failed to start generation');
             } finally {
               setLoading(false);
             }
@@ -169,86 +171,40 @@ export default function AIGeneration() {
     );
   };
 
-  const openGenerationDetails = async (generation: GenerationResult) => {
-    setSelectedGeneration(generation);
-    setModalVisible(true);
-    
-    // If still processing, check for updates
-    if (generation.status === 'pending' || generation.status === 'processing') {
-      try {
-        const updated = await aiService.getGenerationStatus(generation.generationId);
-        setSelectedGeneration(updated);
-        if (updated.status === 'completed' || updated.status === 'failed') {
-          loadGenerationHistory();
-        }
-      } catch (error) {
-        console.error('Failed to get generation status:', error);
-      }
-    }
+  const viewJobDetails = async (job: GenerationJob) => {
+    setSelectedJob(job);
+    // Job details can be implemented later
+    Alert.alert('Job Details', `Job ${job.id} - Status: ${job.status}`)
   };
 
-  const renderTemplateVariable = (template: PromptTemplate, variable: any) => {
-    const value = templateVariables[variable.name];
-    
-    switch (variable.type) {
-      case 'text':
-        return (
-          <TextInput
-            key={variable.name}
-            mode="outlined"
-            label={variable.name}
-            value={value}
-            onChangeText={(text) => updateTemplateVariable(variable.name, text)}
-            style={styles.variableInput}
-            dense
+  const renderCharacterCard = (character: Character) => (
+    <Card key={character.id} style={styles.characterCard} onPress={() => handleCharacterSelect(character)}>
+      <Card.Content>
+        <View style={styles.characterHeader}>
+          <View style={{ flex: 1 }}>
+            <Text variant="titleMedium">{character.name}</Text>
+            <View style={styles.chipContainer}>
+              <Chip mode="flat" style={styles.chip} compact>
+                {character.ethnicity}
+              </Chip>
+              <Chip mode="flat" style={styles.chip} compact>
+                {character.body_type}
+              </Chip>
+              <Chip mode="flat" style={styles.chip} compact>
+                {character.age_range}
+              </Chip>
+            </View>
+          </View>
+          <IconButton
+            icon="creation"
+            mode="contained"
+            size={24}
+            onPress={() => handleCharacterSelect(character)}
           />
-        );
-      
-      case 'select':
-        return (
-          <View key={variable.name} style={styles.variableSelect}>
-            <Text variant="labelMedium" style={styles.variableLabel}>
-              {variable.name}
-            </Text>
-            <RadioButton.Group
-              value={value}
-              onValueChange={(val) => updateTemplateVariable(variable.name, val)}
-            >
-              <View style={styles.radioOptions}>
-                {variable.options?.map(option => (
-                  <View key={option} style={styles.radioOption}>
-                    <RadioButton value={option} />
-                    <Text onPress={() => updateTemplateVariable(variable.name, option)}>
-                      {option}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </RadioButton.Group>
-          </View>
-        );
-      
-      case 'number':
-        return (
-          <View key={variable.name} style={styles.variableSlider}>
-            <Text variant="labelMedium" style={styles.variableLabel}>
-              {variable.name}: {value}
-            </Text>
-            <Slider
-              value={value}
-              onValueChange={(val) => updateTemplateVariable(variable.name, Math.round(val))}
-              minimumValue={18}
-              maximumValue={65}
-              step={1}
-              style={styles.slider}
-            />
-          </View>
-        );
-      
-      default:
-        return null;
-    }
-  };
+        </View>
+      </Card.Content>
+    </Card>
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -260,278 +216,221 @@ export default function AIGeneration() {
     }
   };
 
+  if (loadingData) {
+    return (
+      <AdminRoute>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>Loading AI generation data...</Text>
+        </View>
+      </AdminRoute>
+    );
+  }
+
   return (
     <AdminRoute>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text variant="headlineMedium">AI Image Generation</Text>
-            <Text variant="bodyMedium" style={styles.subtitle}>
-              Generate images using AI
-            </Text>
-          </View>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text variant="headlineMedium">AI Image Generation</Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            Generate character images using local Stable Diffusion
+          </Text>
+        </View>
 
-          {/* Generation Mode */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                Generation Mode
-              </Text>
-              <SegmentedButtons
-                value={generationMode}
-                onValueChange={(value) => setGenerationMode(value as any)}
-                buttons={[
-                  { value: 'template', label: 'Use Template' },
-                  { value: 'custom', label: 'Custom Prompt' },
-                ]}
-                style={styles.segmentedButtons}
-              />
-            </Card.Content>
-          </Card>
-
-          {/* Template Selection */}
-          {generationMode === 'template' && (
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.cardTitle}>
-                  Select Template
-                </Text>
-                <View style={styles.templateChips}>
-                  {templates.map(template => (
-                    <Chip
-                      key={template.id}
-                      selected={selectedTemplate === template.id}
-                      onPress={() => handleTemplateChange(template.id)}
-                      style={styles.templateChip}
-                    >
-                      {template.name}
-                    </Chip>
-                  ))}
-                </View>
-                
-                {selectedTemplate && (
-                  <View style={styles.variablesSection}>
-                    <Text variant="titleSmall" style={styles.variablesTitle}>
-                      Template Variables
-                    </Text>
-                    {templates
-                      .find(t => t.id === selectedTemplate)
-                      ?.variables.map(variable => 
-                        renderTemplateVariable(
-                          templates.find(t => t.id === selectedTemplate)!,
-                          variable
-                        )
-                      )}
-                  </View>
-                )}
-              </Card.Content>
-            </Card>
-          )}
-
-          {/* Custom Prompt */}
-          {generationMode === 'custom' && (
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.cardTitle}>
-                  Custom Prompt
-                </Text>
-                <TextInput
-                  mode="outlined"
-                  label="Enter your prompt"
-                  value={customPrompt}
-                  onChangeText={setCustomPrompt}
-                  multiline
-                  numberOfLines={4}
-                  style={styles.promptInput}
-                />
-              </Card.Content>
-            </Card>
-          )}
-
-          {/* Generation Options */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                Generation Options
-              </Text>
-              
-              <TextInput
-                mode="outlined"
-                label="Character Name (optional)"
-                value={characterName}
-                onChangeText={setCharacterName}
-                style={styles.optionInput}
-                dense
-              />
-              
-              <View style={styles.quantitySection}>
-                <Text variant="labelMedium">Quantity: {quantity}</Text>
-                <Slider
-                  value={quantity}
-                  onValueChange={(val) => setQuantity(Math.round(val))}
-                  minimumValue={1}
-                  maximumValue={10}
-                  step={1}
-                  style={styles.slider}
-                />
+        {/* Statistics */}
+        <Card style={styles.statsCard}>
+          <Card.Content>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Text variant="headlineMedium">{characters.length}</Text>
+                <Text variant="bodyMedium">Characters</Text>
               </View>
-              
-              <View style={styles.costEstimate}>
-                <Text variant="bodyMedium">
-                  Estimated cost: ${aiService.estimateGenerationCost(quantity).toFixed(2)}
+              <View style={styles.statItem}>
+                <Text variant="headlineMedium">
+                  {jobs.filter(j => j.status === 'processing').length}
                 </Text>
+                <Text variant="bodyMedium">Active Jobs</Text>
               </View>
-            </Card.Content>
-          </Card>
-
-          {/* Preview */}
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.cardTitle}>
-                Prompt Preview
-              </Text>
-              <Surface style={styles.previewSurface} elevation={0}>
-                <Text variant="bodyMedium" style={styles.previewText}>
-                  {getGeneratedPrompt() || 'No prompt generated'}
+              <View style={styles.statItem}>
+                <Text variant="headlineMedium">
+                  {jobs.filter(j => j.status === 'completed').length}
                 </Text>
-              </Surface>
-            </Card.Content>
-          </Card>
+                <Text variant="bodyMedium">Completed</Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
 
-          {/* Generate Button */}
-          <Button
-            mode="contained"
-            onPress={handleGenerate}
-            loading={loading}
-            disabled={loading || !getGeneratedPrompt()}
-            style={styles.generateButton}
-            icon="creation"
-          >
-            Generate Images
-          </Button>
-
-          {/* Recent Generations */}
+        {/* Active Jobs */}
+        {jobs.length > 0 && (
           <Card style={styles.card}>
             <Card.Content>
-              <View style={styles.historyHeader}>
-                <Text variant="titleMedium">Recent Generations</Text>
+              <View style={styles.sectionHeader}>
+                <Text variant="titleMedium">Active Jobs</Text>
                 <IconButton
                   icon="refresh"
                   size={20}
-                  onPress={loadGenerationHistory}
+                  onPress={loadJobs}
                 />
               </View>
-              
-              {loadingHistory ? (
-                <ActivityIndicator style={styles.historyLoader} />
-              ) : recentGenerations.length === 0 ? (
-                <Text variant="bodyMedium" style={styles.emptyHistory}>
-                  No generations yet
-                </Text>
-              ) : (
-                <View>
-                  {recentGenerations.map((generation, index) => (
-                    <React.Fragment key={generation.generationId}>
-                      {index > 0 && <Divider />}
-                      <List.Item
-                        title={`Generation ${generation.generationId.slice(-8)}`}
-                        description={`${generation.status} • ${format(new Date(generation.createdAt), 'MMM d, h:mm a')}`}
-                        onPress={() => openGenerationDetails(generation)}
-                        left={() => (
-                          <List.Icon
-                            icon={
-                              generation.status === 'completed' ? 'check-circle' :
-                              generation.status === 'failed' ? 'alert-circle' :
-                              generation.status === 'processing' ? 'loading' :
-                              'clock-outline'
-                            }
-                            color={getStatusColor(generation.status)}
-                          />
-                        )}
-                        right={() => (
-                          generation.cost !== undefined ? (
-                            <Text variant="bodyMedium">${generation.cost.toFixed(2)}</Text>
-                          ) : null
-                        )}
-                      />
-                    </React.Fragment>
-                  ))}
-                </View>
+              <Divider style={styles.divider} />
+              {jobs.slice(0, 5).map((job, index) => {
+                const character = characters.find(c => c.id === job.character_id);
+                return (
+                  <React.Fragment key={job.id}>
+                    {index > 0 && <Divider />}
+                    <List.Item
+                      title={character?.name || job.character_id}
+                      description={`${job.status} • ${format(new Date(job.created_at), 'MMM d, h:mm a')}`}
+                      onPress={() => viewJobDetails(job)}
+                      left={() => (
+                        <List.Icon
+                          icon={
+                            job.status === 'completed' ? 'check-circle' :
+                            job.status === 'failed' ? 'alert-circle' :
+                            job.status === 'processing' ? 'loading' :
+                            'clock-outline'
+                          }
+                          color={getStatusColor(job.status)}
+                        />
+                      )}
+                    />
+                  </React.Fragment>
+                );
+              })}
+              {jobs.length > 5 && (
+                <Button
+                  mode="text"
+                  onPress={() => Alert.alert('Coming Soon', 'Full job queue view')}
+                  style={styles.viewMoreButton}
+                >
+                  View All ({jobs.length} total)
+                </Button>
               )}
             </Card.Content>
           </Card>
-        </ScrollView>
+        )}
 
-        {/* Generation Details Modal */}
-        <Portal>
-          <Modal
-            visible={modalVisible}
-            onDismiss={() => setModalVisible(false)}
-            contentContainerStyle={styles.modalContent}
-          >
-            {selectedGeneration && (
-              <Surface style={styles.modal} elevation={0}>
-                <View style={styles.modalHeader}>
-                  <Text variant="titleLarge">Generation Details</Text>
-                  <IconButton
-                    icon="close"
-                    size={24}
-                    onPress={() => setModalVisible(false)}
-                  />
+        {/* Characters */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text variant="titleMedium">Characters</Text>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              Select a character to generate images
+            </Text>
+          </Card.Content>
+        </Card>
+
+        {/* Character List */}
+        <View style={styles.characterList}>
+          {characters.map(renderCharacterCard)}
+        </View>
+
+      </ScrollView>
+
+      {/* Generation Modal */}
+      <Portal>
+        <Modal
+          visible={modalVisible}
+          onDismiss={() => setModalVisible(false)}
+          contentContainerStyle={styles.modalContent}
+        >
+          {selectedCharacter && (
+            <Surface style={styles.modal} elevation={0}>
+              <View style={styles.modalHeader}>
+                <Text variant="titleLarge">Generate Images</Text>
+                <IconButton
+                  icon="close"
+                  size={24}
+                  onPress={() => setModalVisible(false)}
+                />
+              </View>
+              
+              <ScrollView style={styles.modalBody}>
+                <Text variant="titleMedium">{selectedCharacter.name}</Text>
+                <Text variant="bodyMedium" style={styles.characterInfo}>
+                  {selectedCharacter.ethnicity} • {selectedCharacter.body_type} • {selectedCharacter.age_range}
+                </Text>
+                
+                <Divider style={styles.divider} />
+                
+                {/* Focus Type */}
+                <View style={styles.modalSection}>
+                  <Text variant="bodyMedium" style={styles.sectionLabel}>Focus Type</Text>
+                  <View style={styles.chipGroup}>
+                    <Chip
+                      selected={generationSettings.focus === 'mixed'}
+                      onPress={() => setGenerationSettings(prev => ({ ...prev, focus: 'mixed' }))}
+                      style={styles.chipOption}
+                    >
+                      Mixed (50/50)
+                    </Chip>
+                    <Chip
+                      selected={generationSettings.focus === 'ass'}
+                      onPress={() => setGenerationSettings(prev => ({ ...prev, focus: 'ass' }))}
+                      style={styles.chipOption}
+                    >
+                      Ass Focus
+                    </Chip>
+                    <Chip
+                      selected={generationSettings.focus === 'tits'}
+                      onPress={() => setGenerationSettings(prev => ({ ...prev, focus: 'tits' }))}
+                      style={styles.chipOption}
+                    >
+                      Tits Focus
+                    </Chip>
+                  </View>
                 </View>
                 
-                <ScrollView style={styles.modalBody}>
-                  <List.Item
-                    title="Status"
-                    description={selectedGeneration.status}
-                    left={() => <List.Icon icon="information" />}
+                {/* Number of Images */}
+                <View style={styles.modalSection}>
+                  <Text variant="bodyMedium" style={styles.sectionLabel}>
+                    Number of Images: {generationSettings.count}
+                  </Text>
+                  <Slider
+                    value={generationSettings.count}
+                    onValueChange={(val) => setGenerationSettings(prev => ({ ...prev, count: Math.round(val) }))}
+                    minimumValue={1}
+                    maximumValue={50}
+                    step={1}
+                    style={styles.slider}
                   />
-                  <Divider />
-                  <List.Item
-                    title="Created"
-                    description={format(new Date(selectedGeneration.createdAt), 'MMM d, yyyy h:mm a')}
-                    left={() => <List.Icon icon="calendar" />}
-                  />
-                  <Divider />
-                  {selectedGeneration.cost !== undefined && (
-                    <>
-                      <List.Item
-                        title="Cost"
-                        description={`$${selectedGeneration.cost.toFixed(2)}`}
-                        left={() => <List.Icon icon="currency-usd" />}
-                      />
-                      <Divider />
-                    </>
-                  )}
-                  
-                  {selectedGeneration.error && (
-                    <Surface style={styles.errorSurface} elevation={0}>
-                      <Text variant="bodyMedium" style={styles.errorText}>
-                        {selectedGeneration.error}
-                      </Text>
-                    </Surface>
-                  )}
-                  
-                  {selectedGeneration.images && selectedGeneration.images.length > 0 && (
-                    <View style={styles.imagesSection}>
-                      <Text variant="titleSmall" style={styles.imagesSectionTitle}>
-                        Generated Images ({selectedGeneration.images.length})
-                      </Text>
-                      <Text variant="bodyMedium" style={styles.imagesNote}>
-                        Images have been added to the pending review queue
-                      </Text>
-                    </View>
-                  )}
-                </ScrollView>
-              </Surface>
-            )}
-          </Modal>
-        </Portal>
-      </KeyboardAvoidingView>
+                  <View style={styles.sliderLabels}>
+                    <Text variant="bodySmall">1</Text>
+                    <Text variant="bodySmall">50</Text>
+                  </View>
+                </View>
+                
+                {/* Include Nude */}
+                <View style={styles.modalSection}>
+                  <Chip
+                    selected={generationSettings.includeNude}
+                    onPress={() => 
+                      setGenerationSettings(prev => ({ ...prev, includeNude: !prev.includeNude }))
+                    }
+                    style={styles.chipOption}
+                  >
+                    Include Nude Variations (25%)
+                  </Chip>
+                </View>
+                
+                {/* Generate Button */}
+                <Button
+                  mode="contained"
+                  onPress={handleGenerate}
+                  loading={loading}
+                  disabled={loading}
+                  style={styles.generateButton}
+                  icon="creation"
+                >
+                  Start Generation
+                </Button>
+              </ScrollView>
+            </Surface>
+          )}
+        </Modal>
+      </Portal>
     </AdminRoute>
   );
 }
@@ -541,8 +440,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  content: {
-    paddingBottom: 24,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
   },
   header: {
     padding: 16,
@@ -552,92 +456,51 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginTop: 4,
   },
+  statsCard: {
+    margin: 16,
+    marginTop: 8,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
   card: {
     margin: 16,
     marginTop: 8,
   },
-  cardTitle: {
-    marginBottom: 16,
-  },
-  segmentedButtons: {
-    marginTop: 8,
-  },
-  templateChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  templateChip: {
-    marginBottom: 4,
-  },
-  variablesSection: {
-    marginTop: 20,
-  },
-  variablesTitle: {
-    marginBottom: 12,
-  },
-  variableInput: {
-    marginBottom: 12,
-  },
-  variableSelect: {
-    marginBottom: 16,
-  },
-  variableLabel: {
-    marginBottom: 8,
-  },
-  radioOptions: {
-    gap: 8,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  variableSlider: {
-    marginBottom: 16,
-  },
-  slider: {
-    marginTop: 8,
-  },
-  promptInput: {
-    minHeight: 100,
-  },
-  optionInput: {
-    marginBottom: 16,
-  },
-  quantitySection: {
-    marginBottom: 16,
-  },
-  costEstimate: {
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  previewSurface: {
-    padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-  },
-  previewText: {
-    fontStyle: 'italic',
-  },
-  generateButton: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-  },
-  historyHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  historyLoader: {
-    padding: 32,
+  divider: {
+    marginVertical: 12,
   },
-  emptyHistory: {
-    textAlign: 'center',
-    padding: 32,
-    opacity: 0.6,
+  viewMoreButton: {
+    marginTop: 8,
+  },
+  characterList: {
+    paddingHorizontal: 16,
+  },
+  characterCard: {
+    marginBottom: 12,
+  },
+  characterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  chip: {
+    height: 24,
   },
   modalContent: {
     margin: 20,
@@ -645,35 +508,46 @@ const styles = StyleSheet.create({
   },
   modal: {
     borderRadius: 12,
-    overflow: 'hidden',
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingLeft: 20,
-    paddingRight: 8,
-    paddingVertical: 8,
+    marginBottom: 20,
   },
   modalBody: {
     maxHeight: 400,
   },
-  errorSurface: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#ffebee',
-    borderRadius: 8,
+  characterInfo: {
+    marginTop: 4,
+    opacity: 0.7,
   },
-  errorText: {
-    color: '#c62828',
+  modalSection: {
+    marginVertical: 16,
   },
-  imagesSection: {
-    padding: 16,
+  sectionLabel: {
+    marginBottom: 12,
+    fontWeight: '500',
   },
-  imagesSectionTitle: {
+  chipGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chipOption: {
+    marginRight: 8,
     marginBottom: 8,
   },
-  imagesNote: {
-    opacity: 0.7,
+  slider: {
+    marginTop: 8,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  generateButton: {
+    marginTop: 24,
   },
 });

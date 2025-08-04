@@ -20,7 +20,12 @@ A cross-platform React Native voting application where users choose between two 
 
 ### 🚧 In Progress
 - **Admin Dashboard**: Need to implement admin screens for content management
-- **Image Generation**: AI image generation for characters
+- **AI Image Generation**: Local Stable Diffusion setup complete on MacBook Pro (trout.hopto.org:7860)
+  - RealVisXL V5.0 SDXL model installed and working
+  - ESRGAN upscalers installed (4x-UltraSharp, RealESRGAN)
+  - API wrapper service implemented with job queuing
+  - Successfully generating nude training data
+  - Next: LoRA training for 40 characters
 - **Social Authentication**: OAuth providers configured but need real credentials
 - **Lambda Functions**: Structure created, business logic pending implementation
 - **GraphQL Integration**: Queries and mutations need to be connected for native platforms
@@ -672,11 +677,46 @@ export const domainConfig = {
 };
 ```
 
+## AI Image Generation Architecture
+
+### Overview
+Local Stable Diffusion WebUI (Automatic1111) running on MacBook Pro, accessible via API for generating consistent character images.
+
+### Infrastructure
+- **Service URL**: http://trout.hopto.org:7860 (port forwarded)
+- **API Wrapper**: FastAPI service for authentication and queuing
+- **Storage**: Local SQLite + S3 backup for redundancy
+- **Security**: Nginx reverse proxy with API key authentication
+
+### Character Design
+- **Total Characters**: 40 unique female characters
+  - 15 Caucasian-inspired (Groups 1, 7, 8)
+  - 25 Diverse (Asian, Latina, African, Mixed, Middle Eastern)
+- **Training Method**: LoRA models with nude-first approach
+- **Images per Character**: 20 varied images (10 ass focus, 10 tits focus)
+- **Total Images**: 800 generated images
+
+### Technical Implementation
+- **Base Model**: RealVisXL V5.0 (SDXL-based) with BakedVAE
+- **Training Dataset**: 60% nude, 40% clothed for anatomy consistency
+- **Prompt System**: Modular with 3,750+ unique combinations
+- **Optimal Settings**: DPM++ 2M SDE Karras, 35 steps, CFG 5.0
+- **Tagging**: Automatic extraction of body type, scene, clothing, accessories
+- **Admin Integration**: Built into existing React Native admin screens
+
+### Workflow
+1. Generate 5-10 nude base images per character
+2. Manual approval of training data
+3. Automated LoRA training
+4. Batch generation of final images
+5. Auto-upload to S3 with metadata
+
 ## Success Metrics
 
 - Page load time < 2 seconds
 - Image load time < 500ms
 - API response time < 200ms (p95)
+- AI generation time < 30 seconds per image
 - 99.9% uptime
 - < $100/month for 100k MAU
 - Zero manual deployments
